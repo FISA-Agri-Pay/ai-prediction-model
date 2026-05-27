@@ -60,6 +60,30 @@ class CompareModelsTest(unittest.TestCase):
 
         self.assertEqual(ranked.iloc[0]["model"], "higher_smape_low_under")
 
+    def test_rank_models_uses_pod_accuracy_before_over_provisioning(self):
+        metrics = pd.DataFrame(
+            [
+                {
+                    "model": "lower_over_lower_accuracy",
+                    "smape": 0.2,
+                    "pod_accuracy": 0.7,
+                    "under_provisioning_rate": 0.0,
+                    "over_provisioning_rate": 0.0,
+                },
+                {
+                    "model": "higher_over_higher_accuracy",
+                    "smape": 0.2,
+                    "pod_accuracy": 0.9,
+                    "under_provisioning_rate": 0.0,
+                    "over_provisioning_rate": 0.1,
+                },
+            ]
+        )
+
+        ranked = rank_models(metrics)
+
+        self.assertEqual(ranked.iloc[0]["model"], "higher_over_higher_accuracy")
+
     @unittest.skipIf(matplotlib is None, "matplotlib is not installed")
     def test_write_comparison_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:

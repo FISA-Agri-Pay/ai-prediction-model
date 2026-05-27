@@ -23,10 +23,10 @@ METRIC_COLUMNS = [
 SORT_COLUMNS = [
     "under_provisioning_rate",
     "smape",
-    "over_provisioning_rate",
     "pod_accuracy",
+    "over_provisioning_rate",
 ]
-SORT_ASCENDING = [True, True, True, False]
+SORT_ASCENDING = [True, True, False, True]
 
 
 def load_model_metrics(results_dir: Path = RESULTS_DIR, model_names: list[str] | None = None) -> pd.DataFrame:
@@ -86,7 +86,7 @@ def write_comparison_outputs(
     best = ranked.iloc[0].to_dict()
     best["selection_rule"] = (
         "Lowest under_provisioning_rate, then lowest smape, "
-        "lowest over_provisioning_rate, highest pod_accuracy."
+        "highest pod_accuracy, lowest over_provisioning_rate."
     )
     with best_model_path.open("w", encoding="utf-8") as file:
         json.dump(best, file, indent=2, ensure_ascii=False)
