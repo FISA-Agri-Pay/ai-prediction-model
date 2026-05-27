@@ -68,12 +68,19 @@ def rank_models(metrics: pd.DataFrame) -> pd.DataFrame:
     return ranked
 
 
+def ensure_ranked_not_empty(ranked: pd.DataFrame) -> None:
+    if ranked.empty:
+        raise ValueError("No models ranked - cannot select best")
+
+
 def write_comparison_outputs(
     ranked: pd.DataFrame,
     results_dir: Path = RESULTS_DIR,
     plots_dir: Path = PLOTS_DIR,
 ) -> dict[str, Path]:
     """Write comparison CSV, best-model JSON, and comparison plot."""
+    ensure_ranked_not_empty(ranked)
+
     results_dir.mkdir(parents=True, exist_ok=True)
     plots_dir.mkdir(parents=True, exist_ok=True)
 
@@ -82,7 +89,6 @@ def write_comparison_outputs(
     plot_path = plots_dir / "model_comparison.png"
 
     ranked.to_csv(comparison_path, index=False)
-
     best = ranked.iloc[0].to_dict()
     best["selection_rule"] = (
         "Lowest under_provisioning_rate, then lowest smape, "
@@ -133,6 +139,7 @@ def main() -> None:
     try:
         metrics = load_model_metrics(args.results_dir)
         ranked = rank_models(metrics)
+        ensure_ranked_not_empty(ranked)
         outputs = write_comparison_outputs(ranked, args.results_dir, args.plots_dir)
     except (FileNotFoundError, ValueError) as error:
         print(error, file=sys.stderr)

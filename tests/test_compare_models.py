@@ -84,6 +84,11 @@ class CompareModelsTest(unittest.TestCase):
 
         self.assertEqual(ranked.iloc[0]["model"], "higher_over_higher_accuracy")
 
+    def test_write_comparison_outputs_rejects_empty_ranked_results(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaisesRegex(ValueError, "No models ranked"):
+                write_comparison_outputs(pd.DataFrame(), Path(temp_dir), Path(temp_dir))
+
     @unittest.skipIf(matplotlib is None, "matplotlib is not installed")
     def test_write_comparison_outputs(self):
         with tempfile.TemporaryDirectory() as temp_dir:
