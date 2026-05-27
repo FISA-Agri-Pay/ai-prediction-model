@@ -49,6 +49,24 @@ Model outputs are evaluated with shared utilities in `src/evaluation/`.
 
 Request rate is converted to required pods with `src/evaluation/pod_policy.py` using pod capacity, safety margin, and min/max pod limits.
 
+## Model Training
+
+All model scripts read the same input file, `data/processed/traffic.csv`, and use the same train/holdout split.
+
+```bash
+python src/models/prophet/train.py
+python src/models/sarima/train.py
+python src/models/gru/train.py
+python src/models/lstm/train.py
+```
+
+Each script writes:
+
+- prediction CSV: `data/predictions/{model}_predictions.csv`
+- metric JSON: `experiments/results/{model}_metrics.json`
+
+GRU and LSTM also write model weights to `models/{model}.pt`.
+
 ## Project Structure
 
 ```text
@@ -78,4 +96,4 @@ ai-prediction-model/
 
 ## Status
 
-현재는 프로젝트 기본 구조, 공통 실험 입력 데이터 생성 기능, 공통 평가 지표와 Pod 산정 로직이 추가된 상태입니다. 모델별 학습 코드, 전체 비교 파이프라인, 상세 문서화는 후속 이슈에서 진행합니다.
+현재는 프로젝트 기본 구조, 공통 실험 입력 데이터 생성 기능, 공통 평가 지표와 Pod 산정 로직, 모델별 학습 스크립트가 추가된 상태입니다. 전체 모델 비교 파이프라인과 상세 문서화는 후속 이슈에서 진행합니다.
