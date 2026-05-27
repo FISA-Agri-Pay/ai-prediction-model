@@ -278,6 +278,18 @@ def save_datasets(
 
 
 def parse_args() -> argparse.Namespace:
+    """
+    Parse CLI arguments for the synthetic traffic data generator.
+    
+    Parameters:
+        None
+    
+    Returns:
+        argparse.Namespace: Parsed arguments with attributes:
+            start (str): Start date string (default "2020-01-01").
+            end (str): End date/time string (default "2024-12-31 23:00").
+            freq (str): Pandas frequency string for timestamps (default "1h").
+    """
     parser = argparse.ArgumentParser(description="Generate synthetic traffic data.")
     parser.add_argument("--start", default="2020-01-01", help="Start date, e.g. 2020-01-01")
     parser.add_argument("--end", default="2024-12-31 23:00", help="End date, e.g. 2024-12-31 23:00")
