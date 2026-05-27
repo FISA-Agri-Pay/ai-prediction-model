@@ -1,0 +1,11 @@
+# Target: Windows local development with Python 3.10-3.11.
+# NumPy stays below 2.0 for Prophet compatibility.
+# Torch uses the default PyPI wheel; use the PyTorch index URL separately when CUDA/ROCm is required.
+numpy==1.26.4
+pandas==2.2.2
+matplotlib==3.9.2
+scikit-learn==1.5.2
+prophet==1.1.5
+statsmodels==0.14.4
+torch==2.6.0
+optuna==3.6.1

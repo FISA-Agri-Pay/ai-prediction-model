@@ -1,0 +1,57 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# 환경변수 / 시크릿
+.env
+.env.*
+*.key
+secrets/
+
+# 데이터
+/data/raw/*
+/data/processed/*
+/data/predictions/*
+*.parquet
+*.json.gz
+
+# 실험 산출물
+/experiments/results/*
+/experiments/plots/*
+
+# 모델 파일
+/models/*
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+
+# keep directory structure
+!/data/**/.gitkeep
+!/experiments/**/.gitkeep
+!/models/.gitkeep
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# 로그
+logs/
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
