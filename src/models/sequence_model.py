@@ -109,6 +109,22 @@ def recursive_holdout_forecast(
     sequence_length: int,
 ) -> np.ndarray:
     """Forecast holdout recursively without using true holdout target history."""
+    if sequence_length <= 0:
+        raise ValueError("sequence_length must be greater than 0")
+    if len(scaled_all) < sequence_length:
+        raise ValueError(
+            f"scaled_all must have at least sequence_length rows "
+            f"(got {len(scaled_all)} rows and sequence_length={sequence_length})"
+        )
+    if not isinstance(holdout_start, int):
+        raise ValueError("holdout_start must be an integer")
+    if holdout_start < sequence_length or holdout_start >= len(scaled_all):
+        raise ValueError(
+            f"holdout_start must be >= sequence_length and < len(scaled_all) "
+            f"(got holdout_start={holdout_start}, sequence_length={sequence_length}, "
+            f"len(scaled_all)={len(scaled_all)})"
+        )
+
     import torch
 
     forecast_values = scaled_all.copy()

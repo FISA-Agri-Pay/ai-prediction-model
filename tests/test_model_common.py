@@ -52,6 +52,15 @@ class ModelCommonTest(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     parse_args("gru")
 
+    def test_recursive_holdout_forecast_validates_window_bounds(self):
+        scaled_all = pd.DataFrame({"y": [1.0, 2.0], "feature": [0.0, 0.0]}).to_numpy()
+
+        with self.assertRaisesRegex(ValueError, "sequence_length must be greater than 0"):
+            recursive_holdout_forecast(None, scaled_all, holdout_start=1, sequence_length=0)
+
+        with self.assertRaisesRegex(ValueError, "holdout_start must be >= sequence_length"):
+            recursive_holdout_forecast(None, scaled_all, holdout_start=1, sequence_length=2)
+
     @unittest.skipIf(torch is None, "torch is not installed")
     def test_recursive_holdout_forecast_uses_previous_predictions(self):
         class LastTargetPlusOne:
