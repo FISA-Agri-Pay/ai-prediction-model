@@ -15,7 +15,7 @@ class PodPolicyTest(unittest.TestCase):
 
 class MetricsTest(unittest.TestCase):
     def test_smape_handles_zero_denominator(self):
-        self.assertEqual(smape([0, 10], [0, 20]), 1 / 3)
+        self.assertAlmostEqual(smape([0, 10], [0, 20]), 1 / 3)
 
     def test_metrics_reject_empty_inputs(self):
         with self.assertRaisesRegex(ValueError, "smape: inputs must not be empty"):
