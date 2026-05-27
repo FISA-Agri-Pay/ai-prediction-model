@@ -2,7 +2,7 @@ import unittest
 
 import pandas as pd
 
-from src.models.common import build_prediction_frame, split_train_holdout
+from src.models.common import build_prediction_frame, save_model_outputs, split_train_holdout
 
 
 class ModelCommonTest(unittest.TestCase):
@@ -26,7 +26,13 @@ class ModelCommonTest(unittest.TestCase):
         )
         self.assertEqual(result["model"].unique().tolist(), ["test_model"])
 
+    def test_save_model_outputs_rejects_canonical_key_collisions(self):
+        holdout = pd.DataFrame({"ds": pd.date_range("2024-01-01", periods=2, freq="h"), "y": [10, 40]})
+        predictions = build_prediction_frame(holdout, [10, 20], "test_model")
+
+        with self.assertRaisesRegex(ValueError, "extra_metrics cannot override"):
+            save_model_outputs("test_model", predictions, {"model": "other"})
+
 
 if __name__ == "__main__":
     unittest.main()
-

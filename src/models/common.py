@@ -86,7 +86,6 @@ def save_model_outputs(
     prediction_path = PREDICTIONS_DIR / f"{model_name}_predictions.csv"
     metrics_path = RESULTS_DIR / f"{model_name}_metrics.json"
 
-    predictions.to_csv(prediction_path, index=False)
     metrics = evaluate_predictions(predictions["actual"], predictions["predicted"])
     output = {
         "model": model_name,
@@ -94,8 +93,12 @@ def save_model_outputs(
         **metrics,
     }
     if extra_metrics:
+        collisions = sorted(set(extra_metrics) & set(output))
+        if collisions:
+            raise ValueError(f"extra_metrics cannot override output keys: {collisions}")
         output.update(extra_metrics)
 
+    predictions.to_csv(prediction_path, index=False)
     with metrics_path.open("w", encoding="utf-8") as file:
         json.dump(output, file, indent=2, ensure_ascii=False)
 
