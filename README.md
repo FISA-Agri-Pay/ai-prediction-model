@@ -38,6 +38,17 @@ Outputs are written to:
 - `typhoon_index`: weather regressor
 - `hour`, `day_of_week`, `month`: calendar features
 
+## Evaluation Metrics
+
+Model outputs are evaluated with shared utilities in `src/evaluation/`.
+
+- SMAPE: symmetric forecasting error. Lower is better.
+- Pod accuracy: share of timestamps where predicted pod count matches actual required pod count.
+- Under-provisioning rate: share of timestamps where predicted pods are lower than actual required pods. This is the primary autoscaling metric because it indicates service risk.
+- Over-provisioning rate: share of timestamps where predicted pods exceed actual required pods. This indicates extra cost.
+
+Request rate is converted to required pods with `src/evaluation/pod_policy.py` using pod capacity, safety margin, and min/max pod limits.
+
 ## Project Structure
 
 ```text
@@ -67,4 +78,4 @@ ai-prediction-model/
 
 ## Status
 
-현재는 프로젝트 기본 구조와 공통 실험 입력 데이터 생성 기능이 추가된 상태입니다. 모델별 학습 코드, 평가 지표, 전체 비교 파이프라인, 상세 문서화는 후속 이슈에서 진행합니다.
+현재는 프로젝트 기본 구조, 공통 실험 입력 데이터 생성 기능, 공통 평가 지표와 Pod 산정 로직이 추가된 상태입니다. 모델별 학습 코드, 전체 비교 파이프라인, 상세 문서화는 후속 이슈에서 진행합니다.
