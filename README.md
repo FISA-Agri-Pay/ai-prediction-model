@@ -30,6 +30,12 @@ Reactive autoscaling은 트래픽 증가가 발생한 뒤에 pod 수를 조정�
 
 Synthetic traffic data는 기존 `prophet-autoscaler`의 더미 데이터 생성 아이디어를 참고하여 새 구조에 맞게 재구성했다.
 
+기본 생성 기간은 5년이다.
+
+- 시작: `2020-01-01`
+- 종료: `2024-12-31 23:00`
+- 단위: 1시간
+
 반영된 패턴:
 
 - 월별 계절성
@@ -69,7 +75,7 @@ python src/data/generate_dummy_data.py
 모든 모델은 다음 원칙을 따른다.
 
 - 동일한 입력 파일 사용: `data/processed/traffic.csv`
-- 동일한 train/holdout split 사용
+- 동일한 train/holdout split 사용: 기본 5년 데이터의 마지막 20%, 약 1년을 holdout으로 평가
 - 동일한 평가 지표 사용
 - 동일한 pod 산정 정책 사용
 - 모델별 결과를 동일한 위치에 저장

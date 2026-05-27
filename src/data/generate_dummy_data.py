@@ -6,8 +6,8 @@ prophet-autoscaler project, but it writes outputs to the new repository layout:
 - data/raw/: individual source-like CSV files
 - data/processed/: common model input CSV
 
-The processed dataset keeps a Prophet-friendly timestamp column (`ds`) and target
-column (`y`) so Prophet, SARIMA, GRU, and LSTM can share the same holdout split.
+The default dataset spans five years so Prophet, SARIMA, GRU, and LSTM can learn
+multiple yearly cycles and evaluate on an approximately one-year holdout split.
 """
 
 from __future__ import annotations
@@ -278,8 +278,20 @@ def save_datasets(
 
 
 def parse_args() -> argparse.Namespace:
+    """
+    Parse CLI arguments for the synthetic traffic data generator.
+    
+    Parameters:
+        None
+    
+    Returns:
+        argparse.Namespace: Parsed arguments with attributes:
+            start (str): Start date string (default "2020-01-01").
+            end (str): End date/time string (default "2024-12-31 23:00").
+            freq (str): Pandas frequency string for timestamps (default "1h").
+    """
     parser = argparse.ArgumentParser(description="Generate synthetic traffic data.")
-    parser.add_argument("--start", default="2023-01-01", help="Start date, e.g. 2023-01-01")
+    parser.add_argument("--start", default="2020-01-01", help="Start date, e.g. 2020-01-01")
     parser.add_argument("--end", default="2024-12-31 23:00", help="End date, e.g. 2024-12-31 23:00")
     parser.add_argument("--freq", default="1h", help="Pandas frequency string. Default: 1h")
     return parser.parse_args()
