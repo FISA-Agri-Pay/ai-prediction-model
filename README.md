@@ -13,6 +13,31 @@ reactive autoscaling은 트래픽 증가가 발생한 뒤에 pod 수를 조정�
 - GRU
 - LSTM
 
+## Data Generation
+
+Synthetic traffic data can be generated with:
+
+```bash
+python src/data/generate_dummy_data.py
+```
+
+Outputs are written to:
+
+- `data/raw/dummy_request_rate.csv`
+- `data/raw/dummy_cpu_utilization.csv`
+- `data/raw/dummy_anomaly_events.csv`
+- `data/processed/traffic.csv`
+
+`data/processed/traffic.csv` is the common input dataset for Prophet, SARIMA, GRU, and LSTM experiments. It includes:
+
+- `ds`: timestamp
+- `y`: target request rate
+- `request_rate`: request rate
+- `cpu_utilization`: synthetic CPU utilization
+- `is_monsoon`: weather regressor
+- `typhoon_index`: weather regressor
+- `hour`, `day_of_week`, `month`: calendar features
+
 ## Project Structure
 
 ```text
@@ -42,4 +67,4 @@ ai-prediction-model/
 
 ## Status
 
-현재는 프로젝트 기본 구조를 세팅하는 단계입니다. 기존 `prophet-autoscaler` 코드 마이그레이션, 경로 정리, 평가 파이프라인, 문서화는 후속 이슈에서 진행합니다.
+현재는 프로젝트 기본 구조와 공통 실험 입력 데이터 생성 기능이 추가된 상태입니다. 모델별 학습 코드, 평가 지표, 전체 비교 파이프라인, 상세 문서화는 후속 이슈에서 진행합니다.
