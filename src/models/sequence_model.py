@@ -67,7 +67,18 @@ def parse_args(model_name: str) -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--hidden-size", type=int, default=32)
     parser.add_argument("--learning-rate", type=float, default=0.01)
-    return parser.parse_args()
+    args = parser.parse_args()
+
+    if args.sequence_length <= 0:
+        parser.error("--sequence-length must be a positive integer")
+    if args.epochs <= 0:
+        parser.error("--epochs must be a positive integer")
+    if args.hidden_size <= 0:
+        parser.error("--hidden-size must be a positive integer")
+    if not 0 < args.learning_rate < 1:
+        parser.error("--learning-rate must be greater than 0 and less than 1")
+
+    return args
 
 
 def scale_values(values: np.ndarray, params: ScalingParams | None = None) -> tuple[np.ndarray, ScalingParams]:
@@ -150,4 +161,3 @@ def main(model_name: str, model_cls: Callable[[int, int], _TorchSequenceRegresso
         },
     )
     print(metrics)
-

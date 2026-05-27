@@ -1,8 +1,12 @@
+from contextlib import redirect_stderr
+from io import StringIO
+from unittest.mock import patch
 import unittest
 
 import pandas as pd
 
 from src.models.common import build_prediction_frame, save_model_outputs, split_train_holdout
+from src.models.sequence_model import parse_args
 
 
 class ModelCommonTest(unittest.TestCase):
@@ -32,6 +36,16 @@ class ModelCommonTest(unittest.TestCase):
 
         with self.assertRaisesRegex(ValueError, "extra_metrics cannot override"):
             save_model_outputs("test_model", predictions, {"model": "other"})
+
+    def test_sequence_parse_args_rejects_invalid_hyperparameters(self):
+        with redirect_stderr(StringIO()):
+            with patch("sys.argv", ["train.py", "--sequence-length", "0"]):
+                with self.assertRaises(SystemExit):
+                    parse_args("gru")
+
+            with patch("sys.argv", ["train.py", "--learning-rate", "1.5"]):
+                with self.assertRaises(SystemExit):
+                    parse_args("gru")
 
 
 if __name__ == "__main__":
