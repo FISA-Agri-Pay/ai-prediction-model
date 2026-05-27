@@ -6,7 +6,12 @@ import unittest
 import pandas as pd
 
 from src.models.common import build_prediction_frame, save_model_outputs, split_train_holdout
-from src.models.sequence_model import parse_args
+from src.models.sequence_model import parse_args, recursive_holdout_forecast
+
+try:
+    import torch
+except ModuleNotFoundError:
+    torch = None
 
 
 class ModelCommonTest(unittest.TestCase):
@@ -46,6 +51,28 @@ class ModelCommonTest(unittest.TestCase):
             with patch("sys.argv", ["train.py", "--learning-rate", "1.5"]):
                 with self.assertRaises(SystemExit):
                     parse_args("gru")
+
+    @unittest.skipIf(torch is None, "torch is not installed")
+    def test_recursive_holdout_forecast_uses_previous_predictions(self):
+        class LastTargetPlusOne:
+            def __call__(self, inputs):
+                return inputs[:, -1, 0] + 1
+
+        scaled_all = pd.DataFrame(
+            {
+                "y": [1.0, 2.0, 3.0, 100.0, 200.0],
+                "feature": [0.0, 0.0, 0.0, 0.0, 0.0],
+            }
+        ).to_numpy()
+
+        predictions = recursive_holdout_forecast(
+            LastTargetPlusOne(),
+            scaled_all,
+            holdout_start=3,
+            sequence_length=2,
+        )
+
+        self.assertEqual(predictions.tolist(), [4.0, 5.0])
 
 
 if __name__ == "__main__":

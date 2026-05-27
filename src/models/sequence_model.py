@@ -102,6 +102,28 @@ def make_sequences(values: np.ndarray, sequence_length: int) -> tuple[np.ndarray
     return np.asarray(inputs, dtype=np.float32), np.asarray(targets, dtype=np.float32)
 
 
+def recursive_holdout_forecast(
+    model,
+    scaled_all: np.ndarray,
+    holdout_start: int,
+    sequence_length: int,
+) -> np.ndarray:
+    """Forecast holdout recursively without using true holdout target history."""
+    import torch
+
+    forecast_values = scaled_all.copy()
+    predictions = []
+
+    for index in range(holdout_start, len(forecast_values)):
+        window = forecast_values[index - sequence_length : index]
+        with torch.no_grad():
+            prediction = model(torch.tensor(window[np.newaxis, :, :], dtype=torch.float32)).item()
+        forecast_values[index, 0] = prediction
+        predictions.append(prediction)
+
+    return np.asarray(predictions, dtype=np.float32)
+
+
 def main(model_name: str, model_cls: Callable[[int, int], _TorchSequenceRegressor]) -> None:
     import torch
 
@@ -120,10 +142,6 @@ def main(model_name: str, model_cls: Callable[[int, int], _TorchSequenceRegresso
 
     train_x, train_y = make_sequences(scaled_train, args.sequence_length)
     holdout_start = len(train)
-    holdout_x = []
-    for index in range(holdout_start, len(df)):
-        holdout_x.append(scaled_all[index - args.sequence_length : index])
-    holdout_x = np.asarray(holdout_x, dtype=np.float32)
 
     model = model_cls(input_size=len(columns), hidden_size=args.hidden_size)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
@@ -137,8 +155,12 @@ def main(model_name: str, model_cls: Callable[[int, int], _TorchSequenceRegresso
         loss.backward()
         optimizer.step()
 
-    with torch.no_grad():
-        scaled_predictions = model(torch.tensor(holdout_x)).numpy()
+    scaled_predictions = recursive_holdout_forecast(
+        model,
+        scaled_all,
+        holdout_start,
+        args.sequence_length,
+    )
 
     target_mean = scaling.mean[0]
     target_std = scaling.std[0]
