@@ -67,6 +67,22 @@ Each script writes:
 
 GRU and LSTM also write model weights to `models/{model}.pt`.
 
+## Model Comparison
+
+After model metric files are generated, run:
+
+```bash
+python src/evaluation/compare_models.py
+```
+
+The comparison pipeline writes:
+
+- `experiments/results/comparison_results.csv`
+- `experiments/results/best_model.json`
+- `experiments/plots/model_comparison.png`
+
+The best model is selected by the lowest under-provisioning rate first, then SMAPE, over-provisioning rate, and pod accuracy.
+
 ## Project Structure
 
 ```text
