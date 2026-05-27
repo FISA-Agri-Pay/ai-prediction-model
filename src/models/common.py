@@ -79,7 +79,7 @@ def save_model_outputs(
     model_name: str,
     predictions: pd.DataFrame,
     extra_metrics: dict[str, object] | None = None,
-) -> dict[str, float]:
+) -> dict[str, object]:
     PREDICTIONS_DIR.mkdir(parents=True, exist_ok=True)
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -100,4 +100,3 @@ def save_model_outputs(
         json.dump(output, file, indent=2, ensure_ascii=False)
 
     return output
-
