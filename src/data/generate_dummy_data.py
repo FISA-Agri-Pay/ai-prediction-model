@@ -164,20 +164,20 @@ def inject_anomalies(df: pd.DataFrame, seed: int = 99) -> tuple[pd.DataFrame, pd
             }
         )
 
-    first_year = years[0]
-    monsoon_start = pd.Timestamp(f"{first_year}-07-05")
-    monsoon_end = pd.Timestamp(f"{first_year}-07-15 23:00")
-    monsoon_mask = (result["ds"] >= monsoon_start) & (result["ds"] <= monsoon_end)
-    result.loc[monsoon_mask, "_anomaly_boost"] *= rng.uniform(0.5, 1.5, monsoon_mask.sum())
-    events.append(
-        {
-            "scenario": "monsoon_volatility",
-            "year": int(first_year),
-            "start": monsoon_start,
-            "end": monsoon_end,
-            "multiplier": "uniform(0.5, 1.5)",
-        }
-    )
+    for year in years:
+        monsoon_start = pd.Timestamp(f"{year}-07-05")
+        monsoon_end = pd.Timestamp(f"{year}-07-15 23:00")
+        monsoon_mask = (result["ds"] >= monsoon_start) & (result["ds"] <= monsoon_end)
+        result.loc[monsoon_mask, "_anomaly_boost"] *= rng.uniform(0.5, 1.5, monsoon_mask.sum())
+        events.append(
+            {
+                "scenario": "monsoon_volatility",
+                "year": int(year),
+                "start": monsoon_start,
+                "end": monsoon_end,
+                "multiplier": "uniform(0.5, 1.5)",
+            }
+        )
 
     return result, pd.DataFrame(events)
 
