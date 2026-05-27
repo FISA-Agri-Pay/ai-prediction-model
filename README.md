@@ -1,57 +1,111 @@
 # AI Prediction Model Selection
 
-이 프로젝트는 Kubernetes predictive autoscaling에 적합한 트래픽 예측 모델을 선정하기 위해 Prophet, SARIMA, GRU, LSTM을 동일 조건에서 비교하는 프로젝트입니다.
+이 프로젝트는 Kubernetes predictive autoscaling에 적합한 트래픽 예측 모델을 선정하기 위해 Prophet, SARIMA, GRU, LSTM을 동일 조건에서 비교한다.
 
-## Purpose
+## 프로젝트 목적
 
-reactive autoscaling은 트래픽 증가가 발생한 뒤에 pod 수를 조정하기 때문에 급격한 부하 변화에 늦게 대응할 수 있습니다. 이 레포는 사전에 트래픽을 예측하고 필요한 pod 수를 계산하기 위한 후보 모델을 비교합니다.
+Reactive autoscaling은 트래픽 증가가 발생한 뒤에 pod 수를 조정한다. 급격한 트래픽 증가가 발생하면 HPA가 반응하기 전까지 지연이 생기고, 이 구간에서 서비스 응답 지연이나 장애가 발생할 수 있다.
 
-## Candidate Models
+이 레포는 트래픽을 사전에 예측하고 예측값을 required pod 수로 변환하여, Kubernetes autoscaling에 사용할 최종 예측 모델을 선정하는 것을 목표로 한다.
 
-- Prophet
-- SARIMA
-- GRU
-- LSTM
+## 문제 정의
 
-## Data Generation
+- 입력: 시간별 트래픽 데이터와 보조 feature
+- 출력: holdout 구간의 트래픽 예측값과 required pod 수
+- 목표: 동일한 데이터와 동일한 holdout 조건에서 후보 모델을 비교하고 최종 모델 선정 근거를 문서화
+- Primary metric: Under-provisioning rate
 
-Synthetic traffic data can be generated with:
+자세한 문제 정의는 [docs/problem-definition.md](docs/problem-definition.md)를 참고한다.
+
+## 후보 모델
+
+| 모델 | 역할 |
+| --- | --- |
+| Prophet | 계절성과 이벤트성 변동을 빠르게 반영하는 baseline |
+| SARIMA | 전통적인 통계 기반 시계열 baseline |
+| GRU | 순차 패턴을 학습하는 경량 recurrent neural network |
+| LSTM | 장기 의존성을 고려하는 recurrent neural network |
+
+## 데이터 생성 방식
+
+Synthetic traffic data는 기존 `prophet-autoscaler`의 더미 데이터 생성 아이디어를 참고하여 새 구조에 맞게 재구성했다.
+
+반영된 패턴:
+
+- 월별 계절성
+- 요일별 패턴
+- 시간대별 패턴
+- 장마철 변동성
+- 태풍 영향
+- 이상치 이벤트
+
+데이터 생성:
 
 ```bash
 python src/data/generate_dummy_data.py
 ```
 
-Outputs are written to:
+출력 파일:
 
 - `data/raw/dummy_request_rate.csv`
 - `data/raw/dummy_cpu_utilization.csv`
 - `data/raw/dummy_anomaly_events.csv`
 - `data/processed/traffic.csv`
 
-`data/processed/traffic.csv` is the common input dataset for Prophet, SARIMA, GRU, and LSTM experiments. It includes:
+`data/processed/traffic.csv`는 모든 모델이 공통으로 사용하는 입력 데이터다.
+
+주요 컬럼:
 
 - `ds`: timestamp
-- `y`: target request rate
-- `request_rate`: request rate
+- `y`: 예측 대상 request rate
+- `request_rate`: synthetic request rate
 - `cpu_utilization`: synthetic CPU utilization
-- `is_monsoon`: weather regressor
-- `typhoon_index`: weather regressor
+- `is_monsoon`: 장마 여부
+- `typhoon_index`: 태풍 영향 지수
 - `hour`, `day_of_week`, `month`: calendar features
 
-## Evaluation Metrics
+## 실험 조건
 
-Model outputs are evaluated with shared utilities in `src/evaluation/`.
+모든 모델은 다음 원칙을 따른다.
 
-- SMAPE: symmetric forecasting error. Lower is better.
-- Pod accuracy: share of timestamps where predicted pod count matches actual required pod count.
-- Under-provisioning rate: share of timestamps where predicted pods are lower than actual required pods. This is the primary autoscaling metric because it indicates service risk.
-- Over-provisioning rate: share of timestamps where predicted pods exceed actual required pods. This indicates extra cost.
+- 동일한 입력 파일 사용: `data/processed/traffic.csv`
+- 동일한 train/holdout split 사용
+- 동일한 평가 지표 사용
+- 동일한 pod 산정 정책 사용
+- 모델별 결과를 동일한 위치에 저장
 
-Request rate is converted to required pods with `src/evaluation/pod_policy.py` using pod capacity, safety margin, and min/max pod limits.
+자세한 실험 설계는 [docs/experiment-design.md](docs/experiment-design.md)를 참고한다.
 
-## Model Training
+## 평가 지표
 
-All model scripts read the same input file, `data/processed/traffic.csv`, and use the same train/holdout split.
+평가는 [src/evaluation/metrics.py](src/evaluation/metrics.py)와 [src/evaluation/pod_policy.py](src/evaluation/pod_policy.py)의 공통 로직을 사용한다.
+
+| 지표 | 의미 | 방향 |
+| --- | --- | --- |
+| SMAPE | 예측값과 실제값의 symmetric error | 낮을수록 좋음 |
+| Pod accuracy | 예측 pod 수와 실제 필요 pod 수가 일치한 비율 | 높을수록 좋음 |
+| Under-provisioning rate | 예측 pod 수가 실제 필요 pod 수보다 부족한 비율 | 가장 낮아야 함 |
+| Over-provisioning rate | 예측 pod 수가 실제 필요 pod 수보다 많은 비율 | 낮을수록 비용 효율적 |
+
+Autoscaling에서는 pod 부족이 서비스 장애로 이어질 수 있으므로 under-provisioning rate를 primary metric으로 둔다.
+
+자세한 기준은 [docs/model-selection-criteria.md](docs/model-selection-criteria.md)를 참고한다.
+
+## 실행 방법
+
+1. 의존성 설치
+
+```bash
+pip install -r requirements.txt
+```
+
+2. 데이터 생성
+
+```bash
+python src/data/generate_dummy_data.py
+```
+
+3. 모델별 학습 및 평가
 
 ```bash
 python src/models/prophet/train.py
@@ -60,43 +114,60 @@ python src/models/gru/train.py
 python src/models/lstm/train.py
 ```
 
-Each script writes:
+각 모델은 다음 파일을 생성한다.
 
-- prediction CSV: `data/predictions/{model}_predictions.csv`
-- metric JSON: `experiments/results/{model}_metrics.json`
+- `data/predictions/{model}_predictions.csv`
+- `experiments/results/{model}_metrics.json`
+- `models/{model}.pt` for GRU/LSTM
 
-GRU and LSTM also write model weights to `models/{model}.pt`.
-
-## Model Comparison
-
-After model metric files are generated, run:
+4. 전체 모델 비교
 
 ```bash
 python src/evaluation/compare_models.py
 ```
 
-The comparison pipeline writes:
+비교 결과 저장 위치:
 
 - `experiments/results/comparison_results.csv`
 - `experiments/results/best_model.json`
 - `experiments/plots/model_comparison.png`
 
-The best model is selected by the lowest under-provisioning rate first, then SMAPE, over-provisioning rate, and pod accuracy.
+## 최종 모델 선정 방식
 
-## Project Structure
+모델 ranking은 다음 순서로 판단한다.
+
+1. Under-provisioning rate 낮은 모델
+2. SMAPE 낮은 모델
+3. Pod accuracy 높은 모델
+4. Over-provisioning rate 낮은 모델
+
+최종 선정 문서는 [docs/final-decision.md](docs/final-decision.md)에 기록한다. 현재 metric 값이 아직 확정되지 않은 경우 placeholder로 남긴다.
+
+## 디렉터리 구조
 
 ```text
 ai-prediction-model/
+├─ README.md
+├─ requirements.txt
 ├─ docs/
+│  ├─ problem-definition.md
+│  ├─ experiment-design.md
+│  ├─ model-selection-criteria.md
+│  ├─ final-decision.md
+│  ├─ prompt-log.md
 │  └─ module-spec/
 ├─ src/
 │  ├─ data/
+│  │  └─ generate_dummy_data.py
 │  ├─ models/
 │  │  ├─ prophet/
 │  │  ├─ sarima/
 │  │  ├─ gru/
 │  │  └─ lstm/
 │  ├─ evaluation/
+│  │  ├─ compare_models.py
+│  │  ├─ metrics.py
+│  │  └─ pod_policy.py
 │  └─ utils/
 ├─ data/
 │  ├─ raw/
@@ -107,9 +178,12 @@ ai-prediction-model/
 │  ├─ results/
 │  └─ plots/
 ├─ models/
-└─ notebooks/
+├─ notebooks/
+└─ tests/
 ```
 
-## Status
+## 현재 상태
 
-현재는 프로젝트 기본 구조, 공통 실험 입력 데이터 생성 기능, 공통 평가 지표와 Pod 산정 로직, 모델별 학습 스크립트가 추가된 상태입니다. 전체 모델 비교 파이프라인과 상세 문서화는 후속 이슈에서 진행합니다.
+프로젝트 구조, synthetic data 생성, 모델별 학습 스크립트, 공통 평가 지표, 전체 모델 비교 파이프라인, 문서 템플릿이 준비되어 있다.
+
+실제 최종 모델 선정은 모델별 학습 실행 후 생성되는 metric 값을 기준으로 확정한다.
