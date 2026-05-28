@@ -35,6 +35,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Tune Prophet parameters with Optuna.")
     add_common_args(parser)
     parser.add_argument("--trials", type=int, default=20, help="Number of Optuna trials.")
+    parser.add_argument(
+        "--n-jobs",
+        type=int,
+        default=1,
+        help="Number of parallel Optuna trials. Start with 2 for Prophet on local CPU.",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed for Optuna sampler.")
     parser.add_argument(
         "--smape-weight",
@@ -52,6 +58,8 @@ def parse_args() -> argparse.Namespace:
 
     if args.trials <= 0:
         parser.error("--trials must be a positive integer.")
+    if args.n_jobs <= 0:
+        parser.error("--n-jobs must be a positive integer.")
     if args.smape_weight < 0:
         parser.error("--smape-weight must be non-negative.")
     if args.over_provisioning_weight < 0:
@@ -153,6 +161,7 @@ def main() -> None:
     study.optimize(
         objective_factory(train, holdout, args.smape_weight, args.over_provisioning_weight),
         n_trials=args.trials,
+        n_jobs=args.n_jobs,
     )
 
     best_predictions, best_metric_values = evaluate_prophet_params(train, holdout, study.best_params)

@@ -36,12 +36,6 @@
 
 위 그래프는 Prophet의 holdout 예측 결과에서 실제 트래픽 평균이 가장 높은 30일 구간을 자동 선택한 것이다. 상단은 실제 트래픽과 예측 트래픽을 비교하고, 하단은 실제 필요 pod 수와 예측 pod 수를 비교한다.
 
-## Tuned Prophet holdout 상세 비교
-
-![Tuned Prophet holdout comparison](assets/prophet_tuned_holdout_comparison.png)
-
-위 그래프는 튜닝된 Prophet의 같은 고트래픽 30일 구간 예측 결과다. 기본 Prophet 그래프와 함께 비교해 튜닝 이후 under-provisioning과 over-provisioning 구간이 어떻게 달라지는지 확인한다.
-
 붉은 음영은 예측 pod 수가 실제 필요 pod 수보다 적은 under-provisioning 구간이고, 파란 음영은 예측 pod 수가 실제 필요 pod 수보다 많은 over-provisioning 구간이다. 최종 모델 선정에서는 전체 holdout metric을 우선 사용하되, 이 그래프를 통해 pod 부족이 발생하는 시점과 예측 패턴을 함께 검토한다.
 
 ## 선정 기준
@@ -76,16 +70,22 @@ GRU와 LSTM은 sequence model로서 비선형 패턴을 학습할 가능성이 �
 
 ## Prophet 튜닝 방법
 
-Prophet 튜닝은 모델 선정 이후의 후속 최적화 단계로 둔다. 기본 모델 비교에서는 네 후보 모델을 동일 조건에서 비교하고, 튜닝 단계에서는 최종 선정된 Prophet만 대상으로 삼아 autoscaling metric을 개선한다.
+Prophet 튜닝은 모델 선정 이후의 후속 최적화 단계로 둔다. 1차 모델 비교에서 선정된 Prophet만 대상으로 삼아 autoscaling metric을 개선한다.
 
 ## Prophet 튜닝 결과
 
 | 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate | 비고 |
 | --- | ---: | ---: | ---: | ---: | --- |
 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 | 기본 설정 |
-| Tuned Prophet | 0.6354 | 0.6804 | 0.1259 | 0.1937 | Optuna tuning |
+| Tuned Prophet | 0.6338 | 0.6796 | 0.1238 | 0.1966 | Optuna tuning |
 
-Tuned Prophet은 검증용 Optuna trial 결과에서 under-provisioning rate와 SMAPE가 소폭 개선됐다. 다만 pod accuracy는 소폭 낮아지고 over-provisioning rate는 증가했으므로, 최종 운영 설정으로 확정하려면 충분한 trial 수로 재실행한 결과를 기준으로 판단해야 한다.
+Tuned Prophet은 `30` trials 기준 Optuna 튜닝 결과에서 under-provisioning rate를 `0.1268`에서 `0.1238`로 낮췄고, SMAPE도 `0.6369`에서 `0.6338`로 소폭 개선했다. 다만 pod accuracy는 `0.6834`에서 `0.6796`으로 낮아졌고, over-provisioning rate는 `0.1899`에서 `0.1966`으로 증가했다. 따라서 튜닝 결과는 서비스 안정성 지표를 소폭 개선한 대신 비용 측면의 trade-off가 생긴 것으로 해석한다.
+
+## Tuned Prophet holdout 상세 비교
+
+![Tuned Prophet holdout comparison](assets/prophet_tuned_holdout_comparison.png)
+
+위 그래프는 튜닝된 Prophet의 같은 고트래픽 30일 구간 예측 결과다. 기본 Prophet 그래프와 함께 비교해 튜닝 이후 under-provisioning과 over-provisioning 구간이 어떻게 달라지는지 확인한다.
 
 튜닝 대상 파라미터:
 
