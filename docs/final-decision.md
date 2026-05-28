@@ -22,6 +22,12 @@
 
 ![Model comparison](assets/model_comparison.png)
 
+## 전체 Holdout Overview
+
+![Holdout year overview](assets/holdout_year_overview.png)
+
+위 그래프는 전체 holdout 약 1년을 일 단위 평균으로 압축해 실제 트래픽/예측 트래픽과 실제 pod/예측 pod 흐름을 비교한 것이다. 장기 추세와 계절성 추종 여부를 확인하기 위한 보조 자료로 사용한다.
+
 ## Prophet holdout 상세 비교
 
 ![Prophet holdout comparison](assets/prophet_holdout_comparison.png)

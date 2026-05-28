@@ -214,10 +214,11 @@ python src/evaluation/compare_models.py
 5. 모델별 holdout 상세 시각화
 
 ```bash
+python src/evaluation/plot_holdout_overview.py
 python src/evaluation/plot_holdout_comparison.py --model all
 ```
 
-문서용 시각화 자료는 `docs/assets/`에 저장된다.
+문서용 시각화 자료는 `docs/assets/`에 저장된다. 1년 overview는 전체 holdout 추세를 확인하기 위한 그래프이고, 모델별 30일 상세 그래프는 고트래픽 구간에서 실제 autoscaling decision을 확인하기 위한 그래프다.
 
 ## 최종 모델 선정 방식
 
@@ -244,6 +245,10 @@ python src/evaluation/plot_holdout_comparison.py --model all
 ![Model comparison](docs/assets/model_comparison.png)
 
 Prophet은 primary metric인 under-provisioning rate가 가장 낮고, pod accuracy와 SMAPE도 가장 좋아 최종 모델로 선정했다. 상세 근거는 [docs/final-decision.md](docs/final-decision.md)를 참고한다.
+
+아래 그래프는 전체 holdout 약 1년을 일 단위 평균으로 압축해 실제 트래픽/예측 트래픽과 실제 pod/예측 pod 흐름을 함께 비교한 것이다.
+
+![Holdout year overview](docs/assets/holdout_year_overview.png)
 
 아래 그래프는 Prophet holdout 구간에서 실제 트래픽 평균이 가장 높은 30일을 자동 선택해 실제 트래픽/예측 트래픽과 실제 필요 pod/예측 pod를 함께 비교한 것이다. pod 그래프의 붉은 음영은 under-provisioning, 파란 음영은 over-provisioning 구간을 의미한다.
 
@@ -275,7 +280,8 @@ ai-prediction-model/
 │  │  ├─ compare_models.py
 │  │  ├─ metrics.py
 │  │  ├─ pod_policy.py
-│  │  └─ plot_holdout_comparison.py
+│  │  ├─ plot_holdout_comparison.py
+│  │  └─ plot_holdout_overview.py
 │  └─ utils/
 ├─ data/
 │  ├─ raw/
