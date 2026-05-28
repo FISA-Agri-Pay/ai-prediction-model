@@ -13,10 +13,13 @@
 
 | Rank | 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate | 비고 |
 | ---: | --- | ---: | ---: | ---: | ---: | --- |
-| 1 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 | 최종 선정 |
-| 2 | GRU | 0.7730 | 0.4829 | 0.1840 | 0.3331 | sequence model |
-| 3 | LSTM | 0.7652 | 0.5250 | 0.2083 | 0.2667 | sequence model |
-| 4 | SARIMA | 1.8726 | 0.5895 | 0.4105 | 0.0000 | statistical baseline |
+| 1 | Tuned Prophet | 0.6354 | 0.6804 | 0.1259 | 0.1937 | Optuna tuning |
+| 2 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 | 최종 선정 baseline |
+| 3 | GRU | 0.7730 | 0.4829 | 0.1840 | 0.3331 | sequence model |
+| 4 | LSTM | 0.7652 | 0.5250 | 0.2083 | 0.2667 | sequence model |
+| 5 | SARIMA | 1.8726 | 0.5895 | 0.4105 | 0.0000 | statistical baseline |
+
+Tuned Prophet은 검증용 Optuna trial 결과에서 under-provisioning rate와 SMAPE가 소폭 개선됐다. 다만 pod accuracy는 소폭 낮아지고 over-provisioning rate는 증가했으므로, 최종 운영 설정으로 확정하려면 충분한 trial 수로 재실행한 결과를 기준으로 판단해야 한다.
 
 ## 모델 비교 그래프
 
@@ -33,6 +36,12 @@
 ![Prophet holdout comparison](assets/prophet_holdout_comparison.png)
 
 위 그래프는 Prophet의 holdout 예측 결과에서 실제 트래픽 평균이 가장 높은 30일 구간을 자동 선택한 것이다. 상단은 실제 트래픽과 예측 트래픽을 비교하고, 하단은 실제 필요 pod 수와 예측 pod 수를 비교한다.
+
+## Tuned Prophet holdout 상세 비교
+
+![Tuned Prophet holdout comparison](assets/prophet_tuned_holdout_comparison.png)
+
+위 그래프는 튜닝된 Prophet의 같은 고트래픽 30일 구간 예측 결과다. 기본 Prophet 그래프와 함께 비교해 튜닝 이후 under-provisioning과 over-provisioning 구간이 어떻게 달라지는지 확인한다.
 
 붉은 음영은 예측 pod 수가 실제 필요 pod 수보다 적은 under-provisioning 구간이고, 파란 음영은 예측 pod 수가 실제 필요 pod 수보다 많은 over-provisioning 구간이다. 최종 모델 선정에서는 전체 holdout metric을 우선 사용하되, 이 그래프를 통해 pod 부족이 발생하는 시점과 예측 패턴을 함께 검토한다.
 
@@ -64,4 +73,32 @@ GRU와 LSTM은 sequence model로서 비선형 패턴을 학습할 가능성이 �
 - GRU/LSTM은 기본 hyperparameter로만 실행했으므로 튜닝 여지가 있다.
 - SARIMA는 5년 hourly 데이터에서 학습 비용이 높고, order 후보 탐색이 필요하다.
 - 이번 결과는 synthetic data 기준이므로 실제 운영 metric으로 재검증해야 한다.
-- 후속 실험에서는 Optuna 또는 grid search로 under-provisioning rate를 직접 최소화하는 방향의 하이퍼파라미터 튜닝을 수행할 수 있다.
+- Prophet은 최종 선정 모델이므로 Optuna 기반 하이퍼파라미터 튜닝을 통해 under-provisioning rate 중심의 추가 최적화를 수행할 수 있다.
+
+## Prophet 튜닝 방법
+
+Prophet 튜닝은 모델 선정 이후의 후속 최적화 단계로 둔다. 기본 모델 비교에서는 네 후보 모델을 동일 조건에서 비교하고, 튜닝 단계에서는 최종 선정된 Prophet만 대상으로 삼아 autoscaling metric을 개선한다.
+
+튜닝 대상 파라미터:
+
+- `changepoint_prior_scale`
+- `seasonality_prior_scale`
+- `holidays_prior_scale`
+- `changepoint_range`
+- `seasonality_mode`
+
+Objective score:
+
+```text
+score = under_provisioning_rate + 0.1 * smape + 0.2 * over_provisioning_rate
+```
+
+이 score는 under-provisioning rate를 가장 중요하게 두되, 예측값을 과하게 높여 over-provisioning을 늘리는 방향으로만 최적화되지 않도록 SMAPE와 over-provisioning rate를 보조 penalty로 사용한다.
+
+튜닝 결과는 다음 파일에 저장한다.
+
+- `experiments/results/prophet_tuning_trials.csv`
+- `experiments/results/prophet_best_params.json`
+- `experiments/results/prophet_tuning_summary.json`
+- `experiments/results/prophet_tuned_metrics.json`
+- `data/predictions/prophet_tuned_predictions.csv`

@@ -68,7 +68,7 @@ Synthetic traffic data는 기존 `prophet-autoscaler`의 더미 데이터 생성
 데이터 생성:
 
 ```bash
-python src/data/generate_dummy_data.py
+python -m src.data.generate_dummy_data
 ```
 
 출력 파일:
@@ -181,16 +181,16 @@ pip install -r requirements.txt
 2. 데이터 생성
 
 ```bash
-python src/data/generate_dummy_data.py
+python -m src.data.generate_dummy_data
 ```
 
 3. 모델별 학습 및 평가
 
 ```bash
-python src/models/prophet/train.py
-python src/models/sarima/train.py
-python src/models/gru/train.py
-python src/models/lstm/train.py
+python -m src.models.prophet.train
+python -m src.models.sarima.train
+python -m src.models.gru.train
+python -m src.models.lstm.train
 ```
 
 각 모델은 다음 파일을 생성한다.
@@ -202,7 +202,7 @@ python src/models/lstm/train.py
 4. 전체 모델 비교
 
 ```bash
-python src/evaluation/compare_models.py
+python -m src.evaluation.compare_models
 ```
 
 비교 결과 저장 위치:
@@ -211,14 +211,41 @@ python src/evaluation/compare_models.py
 - `experiments/results/best_model.json`
 - `experiments/plots/model_comparison.png`
 
-5. 모델별 holdout 상세 시각화
+5. Prophet 하이퍼파라미터 튜닝
 
 ```bash
-python src/evaluation/plot_holdout_overview.py
-python src/evaluation/plot_holdout_comparison.py --model all
+python -m src.models.prophet.tune --trials 20
 ```
 
-문서용 시각화 자료는 `docs/assets/`에 저장된다. 1년 overview는 전체 holdout 추세를 확인하기 위한 그래프이고, 모델별 30일 상세 그래프는 고트래픽 구간에서 실제 autoscaling decision을 확인하기 위한 그래프다.
+튜닝은 Optuna로 수행하며, objective score는 under-provisioning rate를 중심으로 SMAPE와 over-provisioning rate를 보조 penalty로 반영한다.
+
+```text
+score = under_provisioning_rate + 0.1 * smape + 0.2 * over_provisioning_rate
+```
+
+튜닝 결과 저장 위치:
+
+- `experiments/results/prophet_tuning_trials.csv`
+- `experiments/results/prophet_best_params.json`
+- `experiments/results/prophet_tuning_summary.json`
+- `experiments/results/prophet_tuned_metrics.json`
+- `data/predictions/prophet_tuned_predictions.csv`
+
+저장된 best params로 기본 학습 스크립트를 다시 실행할 수도 있다.
+
+```bash
+python -m src.models.prophet.train --params-path experiments/results/prophet_best_params.json
+```
+
+6. holdout 시각화
+
+```bash
+python -m src.evaluation.plot_holdout_overview
+python -m src.evaluation.plot_holdout_comparison --model prophet
+python -m src.evaluation.plot_holdout_comparison --model prophet_tuned
+```
+
+문서용 시각화 자료는 `docs/assets/`에 저장된다. 1년 overview는 전체 holdout 추세를 확인하기 위한 그래프이고, 30일 상세 그래프는 Prophet 기본 모델과 튜닝 모델의 고트래픽 구간 autoscaling decision을 확인하기 위한 그래프다.
 
 ## 최종 모델 선정 방식
 
@@ -233,26 +260,33 @@ python src/evaluation/plot_holdout_comparison.py --model all
 
 ## 현재 실험 결과
 
-현재 5년치 synthetic data 기준 실험에서는 Prophet이 최종 모델로 선정되었다.
+현재 5년치 synthetic data 기준 실험에서는 Prophet이 최종 모델로 선정되었다. 이후 Optuna로 Prophet을 추가 튜닝해 튜닝 전후 metric을 같은 형식으로 비교했다.
 
 | Rank | 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate |
 | ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 |
-| 2 | GRU | 0.7730 | 0.4829 | 0.1840 | 0.3331 |
-| 3 | LSTM | 0.7652 | 0.5250 | 0.2083 | 0.2667 |
-| 4 | SARIMA | 1.8726 | 0.5895 | 0.4105 | 0.0000 |
+| 1 | Tuned Prophet | 0.6354 | 0.6804 | 0.1259 | 0.1937 |
+| 2 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 |
+| 3 | GRU | 0.7730 | 0.4829 | 0.1840 | 0.3331 |
+| 4 | LSTM | 0.7652 | 0.5250 | 0.2083 | 0.2667 |
+| 5 | SARIMA | 1.8726 | 0.5895 | 0.4105 | 0.0000 |
 
 ![Model comparison](docs/assets/model_comparison.png)
 
-Prophet은 primary metric인 under-provisioning rate가 가장 낮고, pod accuracy와 SMAPE도 가장 좋아 최종 모델로 선정했다. 상세 근거는 [docs/final-decision.md](docs/final-decision.md)를 참고한다.
+Prophet은 후보 모델 비교에서 primary metric인 under-provisioning rate가 가장 낮고, pod accuracy와 SMAPE도 가장 좋아 최종 모델로 선정했다. Tuned Prophet은 검증용 Optuna trial 결과에서 under-provisioning rate와 SMAPE가 소폭 개선됐지만, pod accuracy는 소폭 낮아지고 over-provisioning rate는 증가했다. 상세 근거는 [docs/final-decision.md](docs/final-decision.md)를 참고한다.
 
 아래 그래프는 전체 holdout 약 1년을 일 단위 평균으로 압축해 실제 트래픽/예측 트래픽과 실제 pod/예측 pod 흐름을 함께 비교한 것이다.
 
 ![Holdout year overview](docs/assets/holdout_year_overview.png)
 
-아래 그래프는 Prophet holdout 구간에서 실제 트래픽 평균이 가장 높은 30일을 자동 선택해 실제 트래픽/예측 트래픽과 실제 필요 pod/예측 pod를 함께 비교한 것이다. pod 그래프의 붉은 음영은 under-provisioning, 파란 음영은 over-provisioning 구간을 의미한다.
+아래 그래프는 holdout 구간에서 실제 트래픽 평균이 가장 높은 30일을 자동 선택해 실제 트래픽/예측 트래픽과 실제 필요 pod/예측 pod를 함께 비교한 것이다. Prophet 기본 모델과 튜닝 모델을 같은 고트래픽 구간에서 비교해 튜닝 이후 autoscaling decision 변화를 확인한다. pod 그래프의 붉은 음영은 under-provisioning, 파란 음영은 over-provisioning 구간을 의미한다.
+
+### Prophet
 
 ![Prophet holdout comparison](docs/assets/prophet_holdout_comparison.png)
+
+### Tuned Prophet
+
+![Tuned Prophet holdout comparison](docs/assets/prophet_tuned_holdout_comparison.png)
 
 ## 디렉터리 구조
 
@@ -273,6 +307,8 @@ ai-prediction-model/
 │  │  └─ generate_dummy_data.py
 │  ├─ models/
 │  │  ├─ prophet/
+│  │  │  ├─ train.py
+│  │  │  └─ tune.py
 │  │  ├─ sarima/
 │  │  ├─ gru/
 │  │  └─ lstm/
