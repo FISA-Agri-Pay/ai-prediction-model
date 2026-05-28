@@ -149,6 +149,21 @@ python src/evaluation/compare_models.py
 
 최종 선정 문서는 [docs/final-decision.md](docs/final-decision.md)에 기록한다. 현재 metric 값이 아직 확정되지 않은 경우 placeholder로 남긴다.
 
+## 현재 실험 결과
+
+현재 5년치 synthetic data 기준 실험에서는 Prophet이 최종 모델로 선정되었다.
+
+| Rank | 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 1 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 |
+| 2 | GRU | 0.7730 | 0.4829 | 0.1840 | 0.3331 |
+| 3 | LSTM | 0.7652 | 0.5250 | 0.2083 | 0.2667 |
+| 4 | SARIMA | 1.8726 | 0.5895 | 0.4105 | 0.0000 |
+
+![Model comparison](docs/assets/model_comparison.png)
+
+Prophet은 primary metric인 under-provisioning rate가 가장 낮고, pod accuracy와 SMAPE도 가장 좋아 최종 모델로 선정했다. 상세 근거는 [docs/final-decision.md](docs/final-decision.md)를 참고한다.
+
 ## 디렉터리 구조
 
 ```text
