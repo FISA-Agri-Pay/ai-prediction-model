@@ -28,6 +28,7 @@ PROPHET_FEATURES = ["is_monsoon", "typhoon_index"]
 BEST_PARAMS_PATH = RESULTS_DIR / "prophet_best_params.json"
 TRIALS_PATH = RESULTS_DIR / "prophet_tuning_trials.csv"
 SUMMARY_PATH = RESULTS_DIR / "prophet_tuning_summary.json"
+FAILED_TRIAL_SCORE = float("inf")
 
 
 def parse_args() -> argparse.Namespace:
@@ -115,14 +116,20 @@ def objective_factory(
     """Build an Optuna objective function bound to the train/holdout data."""
 
     def objective(trial: optuna.Trial) -> float:
-        params = suggest_params(trial)
-        _, metrics = evaluate_prophet_params(train, holdout, params)
-        score = autoscaling_objective_score(metrics, smape_weight, over_provisioning_weight)
+        try:
+            params = suggest_params(trial)
+            _, metrics = evaluate_prophet_params(train, holdout, params)
+            score = autoscaling_objective_score(metrics, smape_weight, over_provisioning_weight)
 
-        for name, value in metrics.items():
-            trial.set_user_attr(name, value)
-        trial.set_user_attr("objective_score", score)
-        return score
+            for name, value in metrics.items():
+                trial.set_user_attr(name, value)
+            trial.set_user_attr("objective_score", score)
+            return score
+        except optuna.TrialPruned:
+            raise
+        except Exception as error:
+            trial.set_user_attr("error", str(error))
+            return FAILED_TRIAL_SCORE
 
     return objective
 
@@ -162,6 +169,7 @@ def main() -> None:
         objective_factory(train, holdout, args.smape_weight, args.over_provisioning_weight),
         n_trials=args.trials,
         n_jobs=args.n_jobs,
+        catch=(Exception,),
     )
 
     best_predictions, best_metric_values = evaluate_prophet_params(train, holdout, study.best_params)

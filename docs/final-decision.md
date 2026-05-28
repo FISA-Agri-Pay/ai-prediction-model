@@ -66,7 +66,7 @@ GRU와 LSTM은 sequence model로서 비선형 패턴을 학습할 가능성이 �
 - GRU/LSTM은 기본 hyperparameter로만 실행했으므로 튜닝 여지가 있다.
 - SARIMA는 5년 hourly 데이터에서 학습 비용이 높고, order 후보 탐색이 필요하다.
 - 이번 결과는 synthetic data 기준이므로 실제 운영 metric으로 재검증해야 한다.
-- Prophet은 최종 선정 모델이므로 Optuna 기반 하이퍼파라미터 튜닝을 통해 under-provisioning rate 중심의 추가 최적화를 수행할 수 있다.
+- Prophet은 최종 선정 모델이므로 Optuna 기반 하이퍼파라미터 튜닝을 통해 under-provisioning rate 중심의 추가 최적화를 수행했다.
 
 ## Prophet 튜닝 방법
 
