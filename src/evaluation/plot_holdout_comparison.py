@@ -17,7 +17,7 @@ from matplotlib.patches import Patch
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MODEL = "prophet"
 DEFAULT_DAYS = 30
-MODEL_NAMES = ("prophet", "sarima", "gru", "lstm")
+MODEL_NAMES = ("prophet", "sarima", "gru", "lstm", "prophet_tuned")
 
 
 def parse_args() -> argparse.Namespace:
