@@ -26,6 +26,26 @@ Reactive autoscaling은 트래픽 증가가 발생한 뒤에 pod 수를 조정�
 | GRU | 순차 패턴을 학습하는 경량 recurrent neural network |
 | LSTM | 장기 의존성을 고려하는 recurrent neural network |
 
+## 전체 파이프라인
+
+```text
+Synthetic traffic data
+        |
+        v
+data/processed/traffic.csv
+        |
+        +--> Prophet train/evaluate --> prophet_metrics.json
+        +--> SARIMA  train/evaluate --> sarima_metrics.json
+        +--> GRU     train/evaluate --> gru_metrics.json
+        +--> LSTM    train/evaluate --> lstm_metrics.json
+        |
+        v
+experiments/results/comparison_results.csv
+        |
+        v
+experiments/results/best_model.json
+```
+
 ## 데이터 생성 방식
 
 Synthetic traffic data는 기존 `prophet-autoscaler`의 더미 데이터 생성 아이디어를 참고하여 새 구조에 맞게 재구성했다.
@@ -86,12 +106,65 @@ python src/data/generate_dummy_data.py
 
 평가는 [src/evaluation/metrics.py](src/evaluation/metrics.py)와 [src/evaluation/pod_policy.py](src/evaluation/pod_policy.py)의 공통 로직을 사용한다.
 
-| 지표 | 의미 | 방향 |
+### Pod 산정식
+
+```text
+effective_capacity = capacity_per_pod * (1 - safety_margin)
+raw_pods = ceil(max(request_rate, 0) / effective_capacity)
+required_pods = min(max(raw_pods, min_pods), max_pods)
+```
+
+기본 pod 정책:
+
+```text
+capacity_per_pod = 21.1
+safety_margin = 0.2
+min_pods = 1
+max_pods = 8
+```
+
+### Metric 정의
+
+**SMAPE**
+
+```text
+mean(abs(y - yhat) / ((abs(y) + abs(yhat)) / 2))
+```
+
+실제 트래픽과 예측 트래픽의 상대 오차를 나타낸다.
+
+**Pod accuracy**
+
+```text
+mean(actual_pods == predicted_pods)
+```
+
+예측 pod 수가 실제 필요 pod 수와 정확히 일치한 비율이다.
+
+**Under-provisioning rate**
+
+```text
+mean(predicted_pods < actual_pods)
+```
+
+실제 필요 pod 수보다 적게 예측한 비율이다.
+
+**Over-provisioning rate**
+
+```text
+mean(predicted_pods > actual_pods)
+```
+
+실제 필요 pod 수보다 많이 예측한 비율이다.
+
+여기서 `y`는 실제 request rate, `yhat`은 예측 request rate다. `actual_pods`는 실제 request rate로 계산한 필요 pod 수이고, `predicted_pods`는 예측 request rate로 계산한 필요 pod 수다.
+
+| 지표 | 최적화 방향 | autoscaling 관점 |
 | --- | --- | --- |
-| SMAPE | 예측값과 실제값의 symmetric error | 낮을수록 좋음 |
-| Pod accuracy | 예측 pod 수와 실제 필요 pod 수가 일치한 비율 | 높을수록 좋음 |
-| Under-provisioning rate | 예측 pod 수가 실제 필요 pod 수보다 부족한 비율 | 가장 낮아야 함 |
-| Over-provisioning rate | 예측 pod 수가 실제 필요 pod 수보다 많은 비율 | 낮을수록 비용 효율적 |
+| SMAPE | 낮을수록 좋음 | 트래픽 예측 자체의 정확도 |
+| Pod accuracy | 높을수록 좋음 | autoscaling decision 일치도 |
+| Under-provisioning rate | 가장 낮아야 함 | 서비스 지연/장애 위험 |
+| Over-provisioning rate | 낮을수록 비용 효율적 | 불필요한 pod 비용 |
 
 Autoscaling에서는 pod 부족이 서비스 장애로 이어질 수 있으므로 under-provisioning rate를 primary metric으로 둔다.
 
@@ -147,7 +220,7 @@ python src/evaluation/compare_models.py
 3. Pod accuracy 높은 모델
 4. Over-provisioning rate 낮은 모델
 
-최종 선정 문서는 [docs/final-decision.md](docs/final-decision.md)에 기록한다. 현재 metric 값이 아직 확정되지 않은 경우 placeholder로 남긴다.
+최종 선정 결과와 근거는 [docs/final-decision.md](docs/final-decision.md)에 기록한다.
 
 ## 현재 실험 결과
 
@@ -203,8 +276,10 @@ ai-prediction-model/
 └─ tests/
 ```
 
-## 현재 상태
+## 참고 문서
 
-프로젝트 구조, synthetic data 생성, 모델별 학습 스크립트, 공통 평가 지표, 전체 모델 비교 파이프라인, 문서 템플릿이 준비되어 있다.
-
-실제 최종 모델 선정은 모델별 학습 실행 후 생성되는 metric 값을 기준으로 확정한다.
+- [문제 정의](docs/problem-definition.md)
+- [실험 설계](docs/experiment-design.md)
+- [모델 선정 기준](docs/model-selection-criteria.md)
+- [최종 모델 선정 결과](docs/final-decision.md)
+- [프롬프트 기록](docs/prompt-log.md)
