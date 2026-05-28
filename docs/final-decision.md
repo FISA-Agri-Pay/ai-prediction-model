@@ -22,6 +22,14 @@
 
 ![Model comparison](assets/model_comparison.png)
 
+## Prophet holdout 상세 비교
+
+![Prophet holdout comparison](assets/prophet_holdout_comparison.png)
+
+위 그래프는 Prophet의 holdout 예측 결과에서 실제 트래픽 평균이 가장 높은 30일 구간을 자동 선택한 것이다. 상단은 실제 트래픽과 예측 트래픽을 비교하고, 하단은 실제 필요 pod 수와 예측 pod 수를 비교한다.
+
+붉은 음영은 예측 pod 수가 실제 필요 pod 수보다 적은 under-provisioning 구간이고, 파란 음영은 예측 pod 수가 실제 필요 pod 수보다 많은 over-provisioning 구간이다. 최종 모델 선정에서는 전체 holdout metric을 우선 사용하되, 이 그래프를 통해 pod 부족이 발생하는 시점과 예측 패턴을 함께 검토한다.
+
 ## 선정 기준
 
 최종 모델은 다음 순서로 선정했다.

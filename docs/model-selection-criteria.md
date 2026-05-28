@@ -54,3 +54,31 @@ predicted_pods > actual_pods
 ```
 
 과잉 provision은 비용 증가로 이어질 수 있다. 하지만 under-provisioning이 서비스 안정성에 직접적인 위험을 주기 때문에, 본 프로젝트에서는 over-provisioning보다 under-provisioning을 더 중요하게 본다.
+
+## 모델별 Holdout 시각 비교
+
+아래 그래프는 네 후보 모델을 같은 holdout 구간에서 비교하기 위해 실제 트래픽 평균이 가장 높은 30일 구간을 공통으로 사용했다.
+
+- 선택 구간: `2024-03-04 06:00:00` ~ `2024-04-03 05:00:00`
+- 상단 그래프: 실제 트래픽과 예측 트래픽 비교
+- 하단 그래프: 실제 필요 pod 수와 예측 pod 수 비교
+- 붉은 음영: under-provisioning 구간
+- 파란 음영: over-provisioning 구간
+
+### Prophet
+
+![Prophet holdout comparison](assets/prophet_holdout_comparison.png)
+
+### SARIMA
+
+![SARIMA holdout comparison](assets/sarima_holdout_comparison.png)
+
+### GRU
+
+![GRU holdout comparison](assets/gru_holdout_comparison.png)
+
+### LSTM
+
+![LSTM holdout comparison](assets/lstm_holdout_comparison.png)
+
+이 시각화는 최종 ranking을 대체하지 않고, metric으로 확인한 결과가 실제 시간축에서 어떤 형태로 나타나는지 검토하기 위한 보조 자료다. 최종 선정은 전체 holdout 기간의 under-provisioning rate를 가장 우선으로 판단한다.
