@@ -66,8 +66,8 @@ def build_daily_overview() -> tuple[pd.DataFrame, pd.DataFrame]:
     for model in MODEL_NAMES:
         df = load_model_predictions(model).set_index("ds")
         if not actual_added:
-            traffic_parts.append(df[["actual"]].rename(columns={"actual": "actual"}))
-            pod_parts.append(df[["actual_pods"]].rename(columns={"actual_pods": "actual_pods"}))
+            traffic_parts.append(df[["actual"]])
+            pod_parts.append(df[["actual_pods"]])
             actual_added = True
 
         traffic_parts.append(df[["predicted"]].rename(columns={"predicted": model}))
