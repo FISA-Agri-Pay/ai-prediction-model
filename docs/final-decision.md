@@ -13,13 +13,12 @@
 
 | Rank | 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate | 비고 |
 | ---: | --- | ---: | ---: | ---: | ---: | --- |
-| 1 | Tuned Prophet | 0.6354 | 0.6804 | 0.1259 | 0.1937 | Optuna tuning |
-| 2 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 | 최종 선정 baseline |
-| 3 | GRU | 0.7730 | 0.4829 | 0.1840 | 0.3331 | sequence model |
-| 4 | LSTM | 0.7652 | 0.5250 | 0.2083 | 0.2667 | sequence model |
-| 5 | SARIMA | 1.8726 | 0.5895 | 0.4105 | 0.0000 | statistical baseline |
+| 1 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 | 최종 선정 |
+| 2 | GRU | 0.7730 | 0.4829 | 0.1840 | 0.3331 | sequence model |
+| 3 | LSTM | 0.7652 | 0.5250 | 0.2083 | 0.2667 | sequence model |
+| 4 | SARIMA | 1.8726 | 0.5895 | 0.4105 | 0.0000 | statistical baseline |
 
-Tuned Prophet은 검증용 Optuna trial 결과에서 under-provisioning rate와 SMAPE가 소폭 개선됐다. 다만 pod accuracy는 소폭 낮아지고 over-provisioning rate는 증가했으므로, 최종 운영 설정으로 확정하려면 충분한 trial 수로 재실행한 결과를 기준으로 판단해야 한다.
+1차 모델 비교에서는 Prophet이 under-provisioning rate, SMAPE, pod accuracy 기준에서 가장 안정적인 결과를 보여 최종 후보 모델로 선정되었다.
 
 ## 모델 비교 그래프
 
@@ -78,6 +77,15 @@ GRU와 LSTM은 sequence model로서 비선형 패턴을 학습할 가능성이 �
 ## Prophet 튜닝 방법
 
 Prophet 튜닝은 모델 선정 이후의 후속 최적화 단계로 둔다. 기본 모델 비교에서는 네 후보 모델을 동일 조건에서 비교하고, 튜닝 단계에서는 최종 선정된 Prophet만 대상으로 삼아 autoscaling metric을 개선한다.
+
+## Prophet 튜닝 결과
+
+| 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate | 비고 |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 | 기본 설정 |
+| Tuned Prophet | 0.6354 | 0.6804 | 0.1259 | 0.1937 | Optuna tuning |
+
+Tuned Prophet은 검증용 Optuna trial 결과에서 under-provisioning rate와 SMAPE가 소폭 개선됐다. 다만 pod accuracy는 소폭 낮아지고 over-provisioning rate는 증가했으므로, 최종 운영 설정으로 확정하려면 충분한 trial 수로 재실행한 결과를 기준으로 판단해야 한다.
 
 튜닝 대상 파라미터:
 

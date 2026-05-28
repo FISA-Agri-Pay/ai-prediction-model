@@ -260,19 +260,29 @@ python -m src.evaluation.plot_holdout_comparison --model prophet_tuned
 
 ## 현재 실험 결과
 
-현재 5년치 synthetic data 기준 실험에서는 Prophet이 최종 모델로 선정되었다. 이후 Optuna로 Prophet을 추가 튜닝해 튜닝 전후 metric을 같은 형식으로 비교했다.
+현재 5년치 synthetic data 기준 1차 모델 비교에서는 Prophet이 최종 후보 모델로 선정되었다.
 
 | Rank | 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate |
 | ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | Tuned Prophet | 0.6354 | 0.6804 | 0.1259 | 0.1937 |
-| 2 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 |
-| 3 | GRU | 0.7730 | 0.4829 | 0.1840 | 0.3331 |
-| 4 | LSTM | 0.7652 | 0.5250 | 0.2083 | 0.2667 |
-| 5 | SARIMA | 1.8726 | 0.5895 | 0.4105 | 0.0000 |
+| 1 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 |
+| 2 | GRU | 0.7730 | 0.4829 | 0.1840 | 0.3331 |
+| 3 | LSTM | 0.7652 | 0.5250 | 0.2083 | 0.2667 |
+| 4 | SARIMA | 1.8726 | 0.5895 | 0.4105 | 0.0000 |
 
 ![Model comparison](docs/assets/model_comparison.png)
 
-Prophet은 후보 모델 비교에서 primary metric인 under-provisioning rate가 가장 낮고, pod accuracy와 SMAPE도 가장 좋아 최종 모델로 선정했다. Tuned Prophet은 검증용 Optuna trial 결과에서 under-provisioning rate와 SMAPE가 소폭 개선됐지만, pod accuracy는 소폭 낮아지고 over-provisioning rate는 증가했다. 상세 근거는 [docs/final-decision.md](docs/final-decision.md)를 참고한다.
+Prophet은 후보 모델 비교에서 primary metric인 under-provisioning rate가 가장 낮고, pod accuracy와 SMAPE도 가장 좋아 최종 후보 모델로 선정했다. 상세 근거는 [docs/final-decision.md](docs/final-decision.md)를 참고한다.
+
+### Prophet 튜닝 결과
+
+1차 비교에서 선정된 Prophet에 대해 Optuna 기반 하이퍼파라미터 튜닝을 수행했다. 튜닝 결과는 Prophet 기본 설정과 같은 평가 지표로 비교한다.
+
+| 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate |
+| --- | ---: | ---: | ---: | ---: |
+| Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 |
+| Tuned Prophet | 0.6354 | 0.6804 | 0.1259 | 0.1937 |
+
+Tuned Prophet은 검증용 Optuna trial 결과에서 under-provisioning rate와 SMAPE가 소폭 개선됐지만, pod accuracy는 소폭 낮아지고 over-provisioning rate는 증가했다. 최종 튜닝 결과로 확정하려면 충분한 trial 수로 다시 실행한 결과를 기준으로 판단한다.
 
 아래 그래프는 전체 holdout 약 1년을 일 단위 평균으로 압축해 실제 트래픽/예측 트래픽과 실제 pod/예측 pod 흐름을 함께 비교한 것이다.
 
