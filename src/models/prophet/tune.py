@@ -28,7 +28,6 @@ PROPHET_FEATURES = ["is_monsoon", "typhoon_index"]
 BEST_PARAMS_PATH = RESULTS_DIR / "prophet_best_params.json"
 TRIALS_PATH = RESULTS_DIR / "prophet_tuning_trials.csv"
 SUMMARY_PATH = RESULTS_DIR / "prophet_tuning_summary.json"
-FAILED_TRIAL_SCORE = float("inf")
 
 
 def parse_args() -> argparse.Namespace:
@@ -129,7 +128,7 @@ def objective_factory(
             raise
         except Exception as error:
             trial.set_user_attr("error", str(error))
-            return FAILED_TRIAL_SCORE
+            raise
 
     return objective
 
