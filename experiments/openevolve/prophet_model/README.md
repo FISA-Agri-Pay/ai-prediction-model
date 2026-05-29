@@ -117,8 +117,8 @@ unset OPENEVOLVE_HOLDOUT_HEAD_ROWS
 ## Quick row-limit reference
 
 ```bash
-set OPENEVOLVE_TRAIN_TAIL_ROWS=8760
-set OPENEVOLVE_HOLDOUT_HEAD_ROWS=720
+export OPENEVOLVE_TRAIN_TAIL_ROWS=8760
+export OPENEVOLVE_HOLDOUT_HEAD_ROWS=720
 ```
 
 Example command after installing OpenEvolve and configuring an LLM endpoint:

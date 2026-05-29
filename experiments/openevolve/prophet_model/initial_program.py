@@ -39,6 +39,21 @@ def _ensure_ascii_tbb_path():
 
 
 # EVOLVE-BLOCK-START
+def validate_input_columns(frame):
+    """Validate base columns required by prepare_features()."""
+    required = {"hour", "day_of_week", "is_monsoon", "typhoon_index"}
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise ValueError(f"Missing columns for feature engineering: {missing}")
+
+    hour = np.asarray(frame["hour"], dtype=float)
+    day_of_week = np.asarray(frame["day_of_week"], dtype=float)
+    if not np.all(np.isfinite(hour)) or not np.all((0 <= hour) & (hour <= 23)):
+        raise ValueError("Column 'hour' must contain numeric values in [0, 23]")
+    if not np.all(np.isfinite(day_of_week)) or not np.all((0 <= day_of_week) & (day_of_week <= 6)):
+        raise ValueError("Column 'day_of_week' must contain numeric values in [0, 6]")
+
+
 def prepare_features(frame):
     """Create candidate regressors for Prophet from the common traffic data.
 
@@ -48,6 +63,7 @@ def prepare_features(frame):
     day_of_week, and month. Create any additional columns here before adding
     them to candidate_regressors().
     """
+    validate_input_columns(frame)
     prepared = frame.copy()
     prepared["is_peak_hour"] = prepared["hour"].isin([8, 9, 10, 18, 19, 20]).astype(int)
     prepared["is_weekend"] = prepared["day_of_week"].isin([5, 6]).astype(int)

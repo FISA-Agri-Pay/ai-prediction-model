@@ -4,7 +4,9 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
+import tempfile
 import traceback
 import types
 from pathlib import Path
@@ -24,6 +26,10 @@ except ImportError:  # Allows local smoke tests before OpenEvolve is installed.
         def __init__(self, metrics, artifacts=None):
             self.metrics = metrics
             self.artifacts = artifacts or {}
+
+
+DEFAULT_CHILD_TIMEOUT_SECONDS = 300
+DEFAULT_CHILD_MEMORY_MB = 2048
 
 
 def _load_program(program_path: str | Path):
@@ -53,10 +59,25 @@ def _load_program(program_path: str | Path):
     return program
 
 
+def _parse_env_int(var_name: str, default: int = 0) -> int:
+    """Parse an integer env var without letting bad local config crash evaluation."""
+    raw_value = os.getenv(var_name)
+    if raw_value is None or raw_value.strip() == "":
+        return default
+    try:
+        return int(raw_value.strip())
+    except ValueError:
+        print(
+            f"Warning: ignoring invalid {var_name}={raw_value!r}; using {default}.",
+            file=sys.stderr,
+        )
+        return default
+
+
 def _maybe_limit_rows(train, holdout):
     """Optionally limit rows for faster exploratory evolution runs."""
-    train_tail_rows = int(os.getenv("OPENEVOLVE_TRAIN_TAIL_ROWS", "0"))
-    holdout_head_rows = int(os.getenv("OPENEVOLVE_HOLDOUT_HEAD_ROWS", "0"))
+    train_tail_rows = _parse_env_int("OPENEVOLVE_TRAIN_TAIL_ROWS", 0)
+    holdout_head_rows = _parse_env_int("OPENEVOLVE_HOLDOUT_HEAD_ROWS", 0)
 
     if train_tail_rows > 0:
         train = train.tail(train_tail_rows).copy()
@@ -79,12 +100,126 @@ def _artifact_summary(metrics: dict[str, float], program_path: str | Path) -> di
     }
 
 
-def evaluate(program_path):
-    """Evaluate an evolved Prophet model recipe.
+def _error_result(error: Exception | str, artifacts: dict[str, str] | None = None) -> EvaluationResult:
+    error_message = str(error)
+    error_type = type(error).__name__ if isinstance(error, Exception) else "EvaluationError"
+    return EvaluationResult(
+        metrics={
+            "combined_score": 0.0,
+            "penalty_score": 999.0,
+            "error": error_message,
+            "error_type": error_type,
+        },
+        artifacts=artifacts or {},
+    )
 
-    The candidate program must expose `run_forecast(train, holdout)`, which
-    trains Prophet and returns non-negative traffic predictions for holdout.
-    """
+
+def _evaluation_result_to_dict(result: EvaluationResult) -> dict[str, object]:
+    return {
+        "metrics": result.metrics,
+        "artifacts": result.artifacts,
+    }
+
+
+def _evaluation_result_from_dict(payload: dict[str, object]) -> EvaluationResult:
+    return EvaluationResult(
+        metrics=payload.get("metrics", {}),
+        artifacts=payload.get("artifacts", {}),
+    )
+
+
+def _child_env() -> dict[str, str]:
+    allowed_keys = {
+        "PATH",
+        "PATHEXT",
+        "APPDATA",
+        "HOMEDRIVE",
+        "HOMEPATH",
+        "LOCALAPPDATA",
+        "PYTHONIOENCODING",
+        "PYTHONPATH",
+        "PYTHONUTF8",
+        "SYSTEMROOT",
+        "TEMP",
+        "TMP",
+        "USERPROFILE",
+        "VIRTUAL_ENV",
+        "WINDIR",
+        "OPENEVOLVE_TRAIN_TAIL_ROWS",
+        "OPENEVOLVE_HOLDOUT_HEAD_ROWS",
+    }
+    env = {key: value for key, value in os.environ.items() if key.upper() in allowed_keys}
+    env["PYTHONUTF8"] = "1"
+    env["PYTHONIOENCODING"] = "utf-8"
+    python_path = env.get("PYTHONPATH", "")
+    env["PYTHONPATH"] = str(PROJECT_ROOT) if not python_path else str(PROJECT_ROOT) + os.pathsep + python_path
+    return env
+
+
+def _posix_resource_limiter(timeout_seconds: int):
+    if os.name == "nt":
+        return None
+
+    def limit_resources() -> None:
+        try:
+            import resource
+
+            memory_mb = max(_parse_env_int("OPENEVOLVE_EVALUATOR_MEMORY_MB", DEFAULT_CHILD_MEMORY_MB), 256)
+            memory_bytes = memory_mb * 1024 * 1024
+            resource.setrlimit(resource.RLIMIT_CPU, (timeout_seconds, timeout_seconds + 5))
+            resource.setrlimit(resource.RLIMIT_AS, (memory_bytes, memory_bytes))
+        except Exception:
+            os._exit(125)
+
+    return limit_resources
+
+
+def _run_in_child_process(program_path: str | Path) -> EvaluationResult:
+    timeout_seconds = _parse_env_int("OPENEVOLVE_EVALUATOR_TIMEOUT_SECONDS", DEFAULT_CHILD_TIMEOUT_SECONDS)
+    timeout_seconds = max(timeout_seconds, 1)
+
+    result_path = None
+    try:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".json") as temp_file:
+            result_path = Path(temp_file.name)
+
+        command = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            "--child-evaluate",
+            str(program_path),
+            "--result-path",
+            str(result_path),
+        ]
+        completed = subprocess.run(
+            command,
+            check=False,
+            capture_output=True,
+            env=_child_env(),
+            preexec_fn=_posix_resource_limiter(timeout_seconds),
+            text=True,
+            timeout=timeout_seconds,
+        )
+        if result_path.exists() and result_path.stat().st_size > 0:
+            payload = json.loads(result_path.read_text(encoding="utf-8"))
+            return _evaluation_result_from_dict(payload)
+
+        error = completed.stderr.strip() or completed.stdout.strip() or f"child exited with {completed.returncode}"
+        return _error_result(error, {"child_returncode": str(completed.returncode)})
+    except subprocess.TimeoutExpired as error:
+        return _error_result(
+            f"Candidate evaluation exceeded {timeout_seconds}s timeout",
+            {"timeout_seconds": str(timeout_seconds), "stdout": error.stdout or "", "stderr": error.stderr or ""},
+        )
+    except Exception as error:
+        return _error_result(error, {"traceback": traceback.format_exc()})
+    finally:
+        if result_path is not None:
+            result_path.unlink(missing_ok=True)
+
+
+def _evaluate_in_process(program_path):
+    """Evaluate a candidate inside the child process boundary."""
     try:
         program = _load_program(program_path)
         if not hasattr(program, "run_forecast"):
@@ -111,20 +246,33 @@ def evaluate(program_path):
         error_details = traceback.format_exc()
         debug_path = Path(__file__).with_name("evaluator_last_error.txt")
         debug_path.write_text(error_details, encoding="utf-8")
-        return EvaluationResult(
-            metrics={
-                "combined_score": 0.0,
-                "penalty_score": 999.0,
-                "error": str(error),
-                "error_type": type(error).__name__,
-            },
-            artifacts={
+        return _error_result(
+            error,
+            {
                 "error_type": type(error).__name__,
                 "traceback": error_details,
             },
         )
 
 
+def evaluate(program_path):
+    """Evaluate an evolved Prophet model recipe in a separate Python process.
+
+    The candidate program must expose `run_forecast(train, holdout)`, which
+    trains Prophet and returns non-negative traffic predictions for holdout.
+    """
+    return _run_in_child_process(program_path)
+
+
 if __name__ == "__main__":
-    result = evaluate(Path(__file__).with_name("initial_program.py"))
-    print(json.dumps(result.metrics, indent=2, ensure_ascii=False, sort_keys=True))
+    if "--child-evaluate" in sys.argv:
+        candidate_index = sys.argv.index("--child-evaluate") + 1
+        result_index = sys.argv.index("--result-path") + 1
+        result = _evaluate_in_process(sys.argv[candidate_index])
+        Path(sys.argv[result_index]).write_text(
+            json.dumps(_evaluation_result_to_dict(result), ensure_ascii=False),
+            encoding="utf-8",
+        )
+    else:
+        result = evaluate(Path(__file__).with_name("initial_program.py"))
+        print(json.dumps(result.metrics, indent=2, ensure_ascii=False, sort_keys=True))
