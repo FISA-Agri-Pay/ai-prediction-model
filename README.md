@@ -48,7 +48,7 @@ experiments/results/best_model.json
 
 ## 데이터 생성 방식
 
-Synthetic traffic data는 기존 `prophet-autoscaler`의 더미 데이터 생성 아이디어를 참고하여 새 구조에 맞게 재구성했다.
+Synthetic traffic data는 기존 `prophet-autoscaler`의 더미 데이터 생성 아이디어를 참고하여 새 구조에 맞게 재구성했다. 농자재 BNPL 서비스에서 주요 수요가 발생하는 작물은 벼, 고추, 콩, 마늘, 양파로 두고, 각 작물의 파종/정식, 생육 관리, 수확, 상환 조회 시기를 월별 activity로 반영한다.
 
 기본 생성 기간은 5년이다.
 
@@ -58,12 +58,26 @@ Synthetic traffic data는 기존 `prophet-autoscaler`의 더미 데이터 생성
 
 반영된 패턴:
 
-- 월별 계절성
+- 작물별 월별 계절성
 - 요일별 패턴
 - 시간대별 패턴
 - 장마철 변동성
 - 태풍 영향
 - 이상치 이벤트
+
+### 작물별 월별 activity 기준
+
+작물별 월별 activity는 내부 생성 로직에서 가중 평균되어 하나의 전체 농업 수요 계절성으로 반영된다. 가중치는 벼 `0.30`, 고추 `0.25`, 콩 `0.15`, 마늘 `0.15`, 양파 `0.15`로 둔다.
+
+| 작물 | 주요 수요 시기 | 트래픽 반영 의도 |
+| --- | --- | --- |
+| 벼 | 3~5월 파종/모내기 준비, 9~10월 수확·상환 | 봄철 농자재 구매와 가을 상환 조회 반영 |
+| 고추 | 3~4월 파종/정식, 7~9월 방제·수확·상환 | 연초 최고 피크와 여름 병충해/상환 수요 반영 |
+| 콩 | 5~6월 파종 준비, 10~11월 수확·상환 | 초여름 구매와 가을 상환 조회 반영 |
+| 마늘 | 5~6월 수확·상환, 10~11월 파종 | 여름 상환과 가을 파종 수요 반영 |
+| 양파 | 5~6월 수확·상환, 9~10월 정식 | 봄/초여름 상환과 가을 정식 수요 반영 |
+ 
+작물별 activity는 별도 모델 입력 컬럼으로 저장하지 않고, 기존 데이터 스키마를 유지한 채 `request_rate` 생성에만 반영한다. 모델 공통 target은 이 통합 계절성과 요일/시간대/기상/이상치 효과를 곱해 생성한 `request_rate`다.
 
 데이터 생성:
 
@@ -89,6 +103,8 @@ python -m src.data.generate_dummy_data
 - `is_monsoon`: 장마 여부
 - `typhoon_index`: 태풍 영향 지수
 - `hour`, `day_of_week`, `month`: calendar features
+
+작물별 월별 activity는 위 컬럼에 추가하지 않는다. 데이터 생성 단계에서 하나의 통합 계절성으로 합쳐져 `request_rate`와 `y`에 반영되므로, 이후 Prophet/SARIMA/GRU/LSTM 및 OpenEvolve 평가 코드는 기존 컬럼 기준으로 그대로 동작한다.
 
 ## 실험 조건
 
@@ -233,6 +249,16 @@ python -m src.models.prophet.tune --trials 30 --n-jobs 2
 score = under_provisioning_rate + 0.1 * smape + 0.2 * over_provisioning_rate
 ```
 
+Optuna 탐색 대상은 Prophet 모델 구조를 고정한 상태의 하이퍼파라미터다.
+
+| 파라미터 | 의미 |
+| --- | --- |
+| `changepoint_prior_scale` | 추세 변화점에 얼마나 민감하게 반응할지 조정한다. 값이 크면 피크와 급격한 변화에 더 유연하지만 과적합 위험이 커진다. |
+| `seasonality_prior_scale` | 일/주/연 단위 계절성 패턴을 얼마나 강하게 반영할지 조정한다. |
+| `holidays_prior_scale` | 이벤트성 효과를 얼마나 강하게 허용할지 조정한다. 이 프로젝트에서는 농업 이벤트성 변동에 대한 유연성을 조절하는 역할을 한다. |
+| `changepoint_range` | 학습 데이터 중 어느 구간까지 changepoint 후보를 둘지 정한다. 값이 크면 후반부 데이터까지 추세 변화 후보에 포함한다. |
+| `seasonality_mode` | 계절성을 `additive` 또는 `multiplicative` 방식으로 반영할지 결정한다. 트래픽 규모가 커질수록 계절성 진폭도 커지는 경우 `multiplicative`가 유리할 수 있다. |
+
 튜닝 결과 저장 위치:
 
 - `experiments/results/prophet_tuning_trials.csv`
@@ -250,6 +276,16 @@ python -m src.models.prophet.train --params-path experiments/results/prophet_bes
 6. OpenEvolve 기반 Prophet 모델 구성 최적화
 
 OpenEvolve는 Prophet 라이브러리 자체가 아니라 Prophet 모델 recipe를 최적화한다. 진화 대상은 하이퍼파라미터, engineered regressor, custom seasonality, target transformation hook이다.
+
+Optuna가 정해진 파라미터 공간을 탐색하는 방식이라면, OpenEvolve는 Prophet 모델을 구성하는 코드 단위의 선택지를 탐색한다.
+
+| 최적화 대상 | 의미 |
+| --- | --- |
+| Prophet 하이퍼파라미터 | 추세 변화 민감도, 계절성 강도, changepoint 범위, seasonality mode 등을 조정한다. |
+| Regressor 선택 | Prophet에 외생 변수로 추가할 feature 조합을 선택한다. |
+| Feature engineering | 원본 컬럼에서 `is_peak_hour`, `is_weekend`, `monsoon_typhoon` 같은 파생 feature를 만든다. |
+| Custom seasonality | 기본 daily/weekly/yearly seasonality 외에 monthly seasonality 같은 주기를 추가한다. |
+| Target transform hook | 필요하면 학습 target과 예측값을 변환하는 구조를 탐색할 수 있게 한다. |
 
 - `experiments/openevolve/prophet_model/initial_program.py`
 - `experiments/openevolve/prophet_model/evaluator.py`
