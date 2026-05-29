@@ -14,12 +14,14 @@ import pandas as pd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODEL_NAMES = ("prophet", "sarima", "gru", "lstm")
+MODEL_NAMES = ("prophet", "sarima", "gru", "lstm", "prophet_tuned", "openevolve_prophet")
 MODEL_COLORS = {
     "prophet": "#2563eb",
     "sarima": "#9333ea",
     "gru": "#059669",
     "lstm": "#dc2626",
+    "prophet_tuned": "#f97316",
+    "openevolve_prophet": "#0891b2",
 }
 
 

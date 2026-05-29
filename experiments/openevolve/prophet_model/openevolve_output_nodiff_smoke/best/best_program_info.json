@@ -1,0 +1,21 @@
+{
+  "id": "0b3d0623-b869-4495-850e-3696dab86058",
+  "generation": 1,
+  "iteration": 2,
+  "timestamp": 1780025639.1409645,
+  "parent_id": "3942eb96-a26c-4238-a58f-02865847deda",
+  "metrics": {
+    "smape": 0.6418201458138731,
+    "pod_accuracy": 0.6812785388127854,
+    "under_provisioning_rate": 0.13219178082191782,
+    "over_provisioning_rate": 0.1865296803652968,
+    "severe_under_provisioning_rate": 0.025,
+    "pod_change_rate": 0.23678502112113256,
+    "penalty_score": 0.24801898253242113,
+    "combined_score": 0.801269863676951,
+    "train_rows": 17520.0,
+    "holdout_rows": 8760.0
+  },
+  "language": "python",
+  "saved_at": 1780026054.5117376
+}

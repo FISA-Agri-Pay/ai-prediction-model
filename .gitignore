@@ -48,6 +48,16 @@ mlartifacts/
 logs/
 *.log
 
+# OpenEvolve run artifacts
+/experiments/openevolve/**/checkpoints/
+/experiments/openevolve/**/output/
+/experiments/openevolve/**/logs/
+/experiments/openevolve/**/database/
+/experiments/openevolve/**/artifacts/
+/experiments/openevolve/**/config.local.yaml
+/experiments/openevolve/**/evaluator_last_error.txt
+/experiments/openevolve/**/*.log
+
 # OS
 .DS_Store
 Thumbs.db

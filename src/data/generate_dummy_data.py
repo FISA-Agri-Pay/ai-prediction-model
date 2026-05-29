@@ -27,19 +27,87 @@ PROCESSED_DATA_DIR = PROJECT_ROOT / "data" / "processed"
 BASE_REQUEST_RATE = 100.0
 BASE_CPU_UTILIZATION = 50.0
 
-MONTHLY_WEIGHT = {
-    1: 0.20,
-    2: 0.30,
-    3: 1.00,
-    4: 0.85,
-    5: 0.60,
-    6: 0.50,
-    7: 0.35,
-    8: 0.45,
-    9: 0.45,
-    10: 0.35,
-    11: 0.35,
-    12: 0.20,
+# Crop activity weights model expected BNPL agriculture traffic by month.
+# The supported crops are rice, pepper, soybean, garlic, and onion.
+CROP_ACTIVITY_WEIGHTS = {
+    "rice": {
+        1: 0.10,
+        2: 0.20,
+        3: 0.70,
+        4: 0.90,
+        5: 1.00,
+        6: 0.45,
+        7: 0.30,
+        8: 0.35,
+        9: 0.70,
+        10: 0.80,
+        11: 0.25,
+        12: 0.10,
+    },
+    "pepper": {
+        1: 0.15,
+        2: 0.35,
+        3: 1.00,
+        4: 0.95,
+        5: 0.55,
+        6: 0.45,
+        7: 0.55,
+        8: 0.75,
+        9: 0.75,
+        10: 0.35,
+        11: 0.15,
+        12: 0.10,
+    },
+    "soybean": {
+        1: 0.05,
+        2: 0.10,
+        3: 0.20,
+        4: 0.30,
+        5: 0.60,
+        6: 0.90,
+        7: 0.45,
+        8: 0.35,
+        9: 0.45,
+        10: 0.80,
+        11: 0.65,
+        12: 0.10,
+    },
+    "garlic": {
+        1: 0.20,
+        2: 0.25,
+        3: 0.35,
+        4: 0.45,
+        5: 0.75,
+        6: 0.85,
+        7: 0.25,
+        8: 0.20,
+        9: 0.50,
+        10: 0.95,
+        11: 0.90,
+        12: 0.25,
+    },
+    "onion": {
+        1: 0.15,
+        2: 0.20,
+        3: 0.45,
+        4: 0.65,
+        5: 0.90,
+        6: 0.85,
+        7: 0.25,
+        8: 0.20,
+        9: 0.75,
+        10: 0.95,
+        11: 0.45,
+        12: 0.15,
+    },
+}
+
+CROP_TRAFFIC_SHARE = {
+    "rice": 0.30,
+    "pepper": 0.25,
+    "soybean": 0.15,
+    "garlic": 0.15,
+    "onion": 0.15,
 }
 
 WEEKLY_WEIGHT = {
@@ -94,7 +162,18 @@ def generate_base_pattern(start_date: str, end_date: str, freq: str = "1h") -> p
 def apply_seasonal_patterns(df: pd.DataFrame) -> pd.DataFrame:
     """Add monthly, weekly, and hourly traffic pattern multipliers."""
     result = df.copy()
-    result["_seasonal"] = result["ds"].dt.month.map(MONTHLY_WEIGHT)
+    months = result["ds"].dt.month
+    crop_columns = []
+    for crop, monthly_weights in CROP_ACTIVITY_WEIGHTS.items():
+        column = f"crop_{crop}_activity"
+        result[column] = months.map(monthly_weights).astype(float)
+        crop_columns.append(column)
+
+    result["crop_activity_score"] = sum(
+        result[f"crop_{crop}_activity"] * CROP_TRAFFIC_SHARE[crop]
+        for crop in CROP_TRAFFIC_SHARE
+    )
+    result["_seasonal"] = result["crop_activity_score"]
     result["_weekly"] = result["ds"].dt.dayofweek.map(WEEKLY_WEIGHT)
     result["_daily"] = result["ds"].dt.hour.apply(hourly_weight)
     return result

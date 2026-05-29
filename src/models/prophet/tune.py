@@ -5,8 +5,8 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import optuna
 import pandas as pd
 
 from src.evaluation.metrics import evaluate_predictions
@@ -28,6 +28,9 @@ PROPHET_FEATURES = ["is_monsoon", "typhoon_index"]
 BEST_PARAMS_PATH = RESULTS_DIR / "prophet_best_params.json"
 TRIALS_PATH = RESULTS_DIR / "prophet_tuning_trials.csv"
 SUMMARY_PATH = RESULTS_DIR / "prophet_tuning_summary.json"
+
+if TYPE_CHECKING:
+    import optuna
 
 
 def parse_args() -> argparse.Namespace:
@@ -68,7 +71,7 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def suggest_params(trial: optuna.Trial) -> dict[str, object]:
+def suggest_params(trial: "optuna.Trial") -> dict[str, object]:
     """Suggest Prophet parameter values for one Optuna trial."""
     return {
         "changepoint_prior_scale": trial.suggest_float("changepoint_prior_scale", 0.001, 0.5, log=True),
@@ -113,8 +116,9 @@ def objective_factory(
     over_provisioning_weight: float,
 ):
     """Build an Optuna objective function bound to the train/holdout data."""
+    import optuna
 
-    def objective(trial: optuna.Trial) -> float:
+    def objective(trial: "optuna.Trial") -> float:
         try:
             params = suggest_params(trial)
             _, metrics = evaluate_prophet_params(train, holdout, params)
@@ -133,7 +137,7 @@ def objective_factory(
     return objective
 
 
-def write_tuning_outputs(study: optuna.Study, best_metrics: dict[str, object]) -> None:
+def write_tuning_outputs(study: "optuna.Study", best_metrics: dict[str, object]) -> None:
     """Persist tuning trial history, best params, and summary files."""
     RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     study.trials_dataframe(attrs=("number", "value", "params", "user_attrs", "state")).to_csv(
@@ -158,6 +162,8 @@ def write_tuning_outputs(study: optuna.Study, best_metrics: dict[str, object]) -
 
 def main() -> None:
     """Run Prophet Optuna tuning and save tuned model evaluation outputs."""
+    import optuna
+
     args = parse_args()
     df = load_traffic_data(args.data_path)
     train, holdout = split_train_holdout(df, args.holdout_ratio)
