@@ -1,46 +1,5 @@
 # AI Prediction Model Selection
 
-## OpenEvolve Prophet Optimization
-
-OpenEvolve is used to optimize the Prophet model recipe itself rather than a
-post-processing function. The evolved recipe can change Prophet
-hyperparameters, engineered regressors, custom seasonalities, and target
-transformation hooks.
-
-Public experiment config:
-
-- `experiments/openevolve/prophet_model/initial_program.py`
-- `experiments/openevolve/prophet_model/evaluator.py`
-- `experiments/openevolve/prophet_model/config.yaml`
-- `experiments/openevolve/prophet_model/README.md`
-
-Private LLM endpoints and API keys should be placed in
-`experiments/openevolve/prophet_model/config.local.yaml`. This file is ignored
-by git.
-
-Run the selected OpenEvolve Prophet recipe:
-
-```bash
-python -m src.models.prophet.openevolve_train
-```
-
-Outputs:
-
-- `data/predictions/openevolve_prophet_predictions.csv`
-- `experiments/results/openevolve_prophet_metrics.json`
-
-Full train/full holdout validation result:
-
-| Model | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate | Penalty score | Combined score |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| OpenEvolve Prophet | 0.6347 | 0.6861 | 0.1253 | 0.1886 | 0.2414 | 0.8055 |
-
-Selected recipe summary:
-
-- Regressors: `is_monsoon`, `typhoon_index`, `is_peak_hour`, `is_weekend`, `monsoon_typhoon`
-- Prophet params: additive seasonality, `changepoint_prior_scale=0.1`, `seasonality_prior_scale=10.0`, `holidays_prior_scale=1.0`, `changepoint_range=0.8`
-- Custom seasonality: monthly seasonality with period `30.5` and Fourier order `5`
-
 이 프로젝트는 Kubernetes predictive autoscaling에 적합한 트래픽 예측 모델을 선정하기 위해 Prophet, SARIMA, GRU, LSTM을 동일 조건에서 비교한다.
 
 ## 프로젝트 목적
@@ -219,6 +178,15 @@ Autoscaling에서는 pod 부족이 서비스 장애로 이어질 수 있으므�
 pip install -r requirements.txt
 ```
 
+Windows PowerShell에서 한글 출력이 깨지면 현재 세션을 UTF-8로 맞춘 뒤 명령을 실행한다.
+
+```powershell
+chcp 65001
+[Console]::InputEncoding = [System.Text.UTF8Encoding]::new()
+[Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
+$OutputEncoding = [System.Text.UTF8Encoding]::new()
+```
+
 2. 데이터 생성
 
 ```bash
@@ -279,7 +247,33 @@ score = under_provisioning_rate + 0.1 * smape + 0.2 * over_provisioning_rate
 python -m src.models.prophet.train --params-path experiments/results/prophet_best_params.json
 ```
 
-6. holdout 시각화
+6. OpenEvolve 기반 Prophet 모델 구성 최적화
+
+OpenEvolve는 Prophet 라이브러리 자체가 아니라 Prophet 모델 recipe를 최적화한다. 진화 대상은 하이퍼파라미터, engineered regressor, custom seasonality, target transformation hook이다.
+
+- `experiments/openevolve/prophet_model/initial_program.py`
+- `experiments/openevolve/prophet_model/evaluator.py`
+- `experiments/openevolve/prophet_model/config.yaml`
+- `experiments/openevolve/prophet_model/README.md`
+
+선정된 OpenEvolve Prophet recipe 실행:
+
+```bash
+python -m src.models.prophet.openevolve_train
+```
+
+출력 파일:
+
+- `data/predictions/openevolve_prophet_predictions.csv`
+- `experiments/results/openevolve_prophet_metrics.json`
+
+선정된 recipe 요약:
+
+- Regressor: `is_monsoon`, `typhoon_index`, `is_peak_hour`, `is_weekend`, `monsoon_typhoon`
+- Prophet 설정: additive seasonality, `changepoint_prior_scale=0.1`, `seasonality_prior_scale=10.0`, `holidays_prior_scale=1.0`, `changepoint_range=0.8`
+- Custom seasonality: period `30.5`, Fourier order `5`인 monthly seasonality
+
+7. holdout 시각화
 
 ```bash
 python -m src.evaluation.plot_holdout_overview
@@ -327,10 +321,15 @@ Prophet은 후보 모델 비교에서 primary metric인 under-provisioning rate�
 | --- | ---: | ---: | ---: | ---: |
 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 |
 | Tuned Prophet | 0.6338 | 0.6796 | 0.1238 | 0.1966 |
+| OpenEvolve Prophet | 0.6347 | 0.6861 | 0.1253 | 0.1886 |
 
 Tuned Prophet은 `30` trials 기준 Optuna 튜닝 결과에서 under-provisioning rate를 `0.1268`에서 `0.1238`로 낮췄고, SMAPE도 `0.6369`에서 `0.6338`로 소폭 개선했다. 다만 pod accuracy는 `0.6834`에서 `0.6796`으로 낮아졌고, over-provisioning rate는 `0.1899`에서 `0.1966`으로 증가했다. 따라서 튜닝 결과는 서비스 안정성 지표를 소폭 개선한 대신 비용 측면의 trade-off가 생긴 것으로 해석한다.
 
-아래 그래프는 holdout 구간에서 실제 트래픽 평균이 가장 높은 30일을 자동 선택해 실제 트래픽/예측 트래픽과 실제 필요 pod/예측 pod를 함께 비교한 것이다. Prophet 기본 모델과 튜닝 모델을 같은 고트래픽 구간에서 비교해 튜닝 이후 autoscaling decision 변화를 확인한다. pod 그래프의 붉은 음영은 under-provisioning, 파란 음영은 over-provisioning 구간을 의미한다.
+OpenEvolve Prophet은 전체 train/full holdout 재검증 기준 SMAPE `0.6347`, pod accuracy `0.6861`, under-provisioning rate `0.1253`, over-provisioning rate `0.1886`을 기록했다. OpenEvolve objective 기준 penalty score는 `0.2414`, combined score는 `0.8055`이다.
+
+최종 ranking 기준에서는 Tuned Prophet이 under-provisioning rate가 가장 낮아 1위이고, OpenEvolve Prophet은 2위이다. 다만 OpenEvolve Prophet은 Tuned Prophet보다 pod accuracy가 높고 over-provisioning rate가 낮아 비용/decision 안정성 측면에서 장점이 있다.
+
+아래 그래프는 holdout 구간에서 실제 트래픽 평균이 가장 높은 30일을 자동 선택해 실제 트래픽/예측 트래픽과 실제 필요 pod/예측 pod를 함께 비교한 것이다. Prophet 기본 모델, 튜닝 모델, OpenEvolve 모델을 같은 고트래픽 구간에서 비교해 autoscaling decision 변화를 확인한다. pod 그래프의 붉은 음영은 under-provisioning, 파란 음영은 over-provisioning 구간을 의미한다.
 
 ### Prophet
 
@@ -339,6 +338,10 @@ Tuned Prophet은 `30` trials 기준 Optuna 튜닝 결과에서 under-provisionin
 ### Tuned Prophet
 
 ![Tuned Prophet holdout comparison](docs/assets/prophet_tuned_holdout_comparison.png)
+
+### OpenEvolve Prophet
+
+![OpenEvolve Prophet holdout comparison](docs/assets/openevolve_prophet_holdout_comparison.png)
 
 ## 디렉터리 구조
 
@@ -360,7 +363,8 @@ ai-prediction-model/
 │  ├─ models/
 │  │  ├─ prophet/
 │  │  │  ├─ train.py
-│  │  │  └─ tune.py
+│  │  │  ├─ tune.py
+│  │  │  └─ openevolve_train.py
 │  │  ├─ sarima/
 │  │  ├─ gru/
 │  │  └─ lstm/
@@ -377,6 +381,7 @@ ai-prediction-model/
 │  └─ predictions/
 ├─ experiments/
 │  ├─ configs/
+│  ├─ openevolve/
 │  ├─ results/
 │  └─ plots/
 ├─ models/

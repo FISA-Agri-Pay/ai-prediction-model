@@ -13,7 +13,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_DIR = PROJECT_ROOT / "experiments" / "results"
 PLOTS_DIR = PROJECT_ROOT / "experiments" / "plots"
-MODEL_NAMES = ["prophet", "sarima", "gru", "lstm"]
+MODEL_NAMES = ["prophet", "sarima", "gru", "lstm", "prophet_tuned", "openevolve_prophet"]
 METRIC_COLUMNS = [
     "smape",
     "pod_accuracy",
