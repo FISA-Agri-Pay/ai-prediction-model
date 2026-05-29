@@ -425,6 +425,20 @@ ai-prediction-model/
 └─ tests/
 ```
 
+## 최종 사용 모델
+
+최종 사용 모델은 **Tuned Prophet**으로 선정한다.
+
+선정 기준은 Kubernetes predictive autoscaling에서 가장 중요한 지표를 under-provisioning rate로 두었기 때문이다. Tuned Prophet은 비교 대상 중 under-provisioning rate가 `0.1238`로 가장 낮아, 실제 필요한 pod 수보다 적게 예측할 위험이 가장 작다.
+
+| 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate |
+| --- | ---: | ---: | ---: | ---: |
+| Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 |
+| Tuned Prophet | 0.6338 | 0.6796 | 0.1238 | 0.1966 |
+| OpenEvolve Prophet | 0.6347 | 0.6861 | 0.1253 | 0.1886 |
+
+OpenEvolve Prophet은 pod accuracy와 over-provisioning rate에서 가장 좋은 결과를 보였지만, primary metric인 under-provisioning rate 기준으로는 Tuned Prophet보다 낮지 않았다. 따라서 최종 운영 후보는 Tuned Prophet으로 두고, OpenEvolve Prophet은 추가 최적화 가능성이 있는 보조 후보로 정리한다.
+
 ## 참고 문서
 
 - [문제 정의](docs/problem-definition.md)
