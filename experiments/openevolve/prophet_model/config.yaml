@@ -1,0 +1,62 @@
+# OpenEvolve config for Prophet model recipe optimization.
+# Copy to config.local.yaml for private endpoint/API-key settings.
+max_iterations: 40
+checkpoint_interval: 10
+cascade_evaluation: false
+
+llm:
+  models:
+    - name: "YOUR_MODEL_NAME"
+      api_base: "http://localhost:8000/v1"
+      api_key: "dummy"
+      weight: 1.0
+  temperature: 0.4
+  max_tokens: 4096
+  timeout: 900
+
+prompt:
+  system_message: |
+    You are optimizing a Prophet model recipe for Kubernetes predictive autoscaling.
+    Mutate only the EVOLVE block in initial_program.py.
+    The fixed run_forecast(train, holdout) function will call your evolved functions.
+    Return only valid Python code for the requested program update. Do not include markdown fences or explanations.
+    Keep changes compact. Prefer modifying constants, regressor lists, simple engineered features, and Prophet
+    settings over rewriting the whole program.
+    The original input columns are exactly: ds, y, is_monsoon, typhoon_index, hour, day_of_week, month.
+    Do not reference columns named monsoon, typhoon, weekend, or peak_hour unless you explicitly create them
+    in prepare_features before using them.
+
+    You may change:
+    - Prophet hyperparameters
+    - target transformation and inverse transformation
+    - engineered features in prepare_features(frame)
+    - candidate_regressors()
+    - custom seasonalities in build_model()
+
+    When constructing Prophet, keep stan_backend="CMDSTANPY" so the Windows evaluation environment uses the
+    installed CmdStanPy backend reliably.
+    Do not import heavy new libraries.
+    Do not read or write files.
+    Do not run subprocesses.
+    Do not change function names or return types.
+    Do not modify Prophet library internals. Keep the solution interpretable and robust.
+    The evaluator maximizes combined_score, which is derived from a lower-is-better penalty:
+    under_provisioning_rate + 0.1 * smape + 0.2 * over_provisioning_rate
+    + 0.1 * severe_under_provisioning_rate + 0.05 * pod_change_rate.
+    Reduce under-provisioning first, but avoid excessive over-provisioning and noisy pod changes.
+
+database:
+  population_size: 24
+  archive_size: 12
+  num_islands: 3
+  elite_selection_ratio: 0.2
+  exploitation_ratio: 0.7
+  similarity_threshold: 0.99
+
+evaluator:
+  timeout: 300
+  parallel_evaluations: 3
+  cascade_evaluation: false
+
+diff_based_evolution: false
+max_code_length: 14000
