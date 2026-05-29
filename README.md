@@ -1,5 +1,46 @@
 # AI Prediction Model Selection
 
+## OpenEvolve Prophet Optimization
+
+OpenEvolve is used to optimize the Prophet model recipe itself rather than a
+post-processing function. The evolved recipe can change Prophet
+hyperparameters, engineered regressors, custom seasonalities, and target
+transformation hooks.
+
+Public experiment config:
+
+- `experiments/openevolve/prophet_model/initial_program.py`
+- `experiments/openevolve/prophet_model/evaluator.py`
+- `experiments/openevolve/prophet_model/config.yaml`
+- `experiments/openevolve/prophet_model/README.md`
+
+Private LLM endpoints and API keys should be placed in
+`experiments/openevolve/prophet_model/config.local.yaml`. This file is ignored
+by git.
+
+Run the selected OpenEvolve Prophet recipe:
+
+```bash
+python -m src.models.prophet.openevolve_train
+```
+
+Outputs:
+
+- `data/predictions/openevolve_prophet_predictions.csv`
+- `experiments/results/openevolve_prophet_metrics.json`
+
+Full train/full holdout validation result:
+
+| Model | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate | Penalty score | Combined score |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| OpenEvolve Prophet | 0.6347 | 0.6861 | 0.1253 | 0.1886 | 0.2414 | 0.8055 |
+
+Selected recipe summary:
+
+- Regressors: `is_monsoon`, `typhoon_index`, `is_peak_hour`, `is_weekend`, `monsoon_typhoon`
+- Prophet params: additive seasonality, `changepoint_prior_scale=0.1`, `seasonality_prior_scale=10.0`, `holidays_prior_scale=1.0`, `changepoint_range=0.8`
+- Custom seasonality: monthly seasonality with period `30.5` and Fourier order `5`
+
 이 프로젝트는 Kubernetes predictive autoscaling에 적합한 트래픽 예측 모델을 선정하기 위해 Prophet, SARIMA, GRU, LSTM을 동일 조건에서 비교한다.
 
 ## 프로젝트 목적
