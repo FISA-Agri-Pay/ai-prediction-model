@@ -8,10 +8,16 @@ from typing import Callable
 
 import numpy as np
 
+try:
+    import torch
+except ModuleNotFoundError:
+    torch = None
+
 from src.models.common import (
-    FEATURE_COLUMNS,
+    MODEL_FEATURE_COLUMNS,
     MODELS_DIR,
     add_common_args,
+    add_cyclic_time_features,
     build_prediction_frame,
     load_traffic_data,
     save_model_outputs,
@@ -39,32 +45,28 @@ class SequenceRegressor:
         return _TorchSequenceRegressor(torch.nn.LSTM, input_size, hidden_size)
 
 
-class _TorchSequenceRegressor:
+_TorchModuleBase = torch.nn.Module if torch is not None else object
+
+
+class _TorchSequenceRegressor(_TorchModuleBase):
     def __init__(self, recurrent_cls, input_size: int, hidden_size: int):
         import torch
 
+        super().__init__()
         self.recurrent = recurrent_cls(input_size=input_size, hidden_size=hidden_size, batch_first=True)
         self.output = torch.nn.Linear(hidden_size, 1)
 
-    def parameters(self):
-        return list(self.recurrent.parameters()) + list(self.output.parameters())
-
-    def __call__(self, inputs):
+    def forward(self, inputs):
         output, _ = self.recurrent(inputs)
         return self.output(output[:, -1, :]).squeeze(-1)
-
-    def state_dict(self):
-        return {
-            "recurrent": self.recurrent.state_dict(),
-            "output": self.output.state_dict(),
-        }
 
 
 def parse_args(model_name: str) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=f"Train {model_name.upper()} model.")
     add_common_args(parser)
     parser.add_argument("--sequence-length", type=int, default=24)
-    parser.add_argument("--epochs", type=int, default=20)
+    parser.add_argument("--epochs", type=int, default=50)
+    parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--hidden-size", type=int, default=32)
     parser.add_argument("--learning-rate", type=float, default=0.01)
     args = parser.parse_args()
@@ -73,6 +75,8 @@ def parse_args(model_name: str) -> argparse.Namespace:
         parser.error("--sequence-length must be a positive integer")
     if args.epochs <= 0:
         parser.error("--epochs must be a positive integer")
+    if args.batch_size <= 0:
+        parser.error("--batch-size must be a positive integer")
     if args.hidden_size <= 0:
         parser.error("--hidden-size must be a positive integer")
     if not 0 < args.learning_rate < 1:
@@ -129,6 +133,8 @@ def recursive_holdout_forecast(
 
     forecast_values = scaled_all.copy()
     predictions = []
+    if hasattr(model, "eval"):
+        model.eval()
 
     for index in range(holdout_start, len(forecast_values)):
         window = forecast_values[index - sequence_length : index]
@@ -142,14 +148,15 @@ def recursive_holdout_forecast(
 
 def main(model_name: str, model_cls: Callable[[int, int], _TorchSequenceRegressor]) -> None:
     import torch
+    from torch.utils.data import DataLoader, TensorDataset
 
     args = parse_args(model_name)
     torch.manual_seed(42)
     np.random.seed(42)
 
-    df = load_traffic_data(args.data_path)
+    df = add_cyclic_time_features(load_traffic_data(args.data_path))
     train, holdout = split_train_holdout(df, args.holdout_ratio)
-    columns = ["y", *FEATURE_COLUMNS]
+    columns = ["y", *MODEL_FEATURE_COLUMNS]
 
     train_values = train[columns].to_numpy(dtype=float)
     all_values = df[columns].to_numpy(dtype=float)
@@ -165,11 +172,19 @@ def main(model_name: str, model_cls: Callable[[int, int], _TorchSequenceRegresso
 
     train_x_tensor = torch.tensor(train_x)
     train_y_tensor = torch.tensor(train_y)
+    train_dataset = TensorDataset(train_x_tensor, train_y_tensor)
+    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
+    epoch_losses = []
     for _ in range(args.epochs):
-        optimizer.zero_grad()
-        loss = loss_fn(model(train_x_tensor), train_y_tensor)
-        loss.backward()
-        optimizer.step()
+        model.train()
+        total_loss = 0.0
+        for batch_x, batch_y in train_loader:
+            optimizer.zero_grad()
+            loss = loss_fn(model(batch_x), batch_y)
+            loss.backward()
+            optimizer.step()
+            total_loss += loss.item() * len(batch_x)
+        epoch_losses.append(total_loss / len(train_dataset))
 
     scaled_predictions = recursive_holdout_forecast(
         model,
@@ -195,6 +210,8 @@ def main(model_name: str, model_cls: Callable[[int, int], _TorchSequenceRegresso
             "features": columns,
             "sequence_length": args.sequence_length,
             "epochs": args.epochs,
+            "batch_size": args.batch_size,
+            "final_train_loss": epoch_losses[-1],
             "model_path": str((MODELS_DIR / f"{model_name}.pt").relative_to(MODELS_DIR.parent)),
         },
     )

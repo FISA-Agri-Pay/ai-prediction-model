@@ -5,7 +5,13 @@ import unittest
 
 import pandas as pd
 
-from src.models.common import build_prediction_frame, save_model_outputs, split_train_holdout
+from src.models.common import (
+    MODEL_FEATURE_COLUMNS,
+    build_model_feature_frame,
+    build_prediction_frame,
+    save_model_outputs,
+    split_train_holdout,
+)
 from src.models.sequence_model import parse_args, recursive_holdout_forecast
 
 try:
@@ -35,6 +41,28 @@ class ModelCommonTest(unittest.TestCase):
         )
         self.assertEqual(result["model"].unique().tolist(), ["test_model"])
 
+    def test_build_model_feature_frame_uses_cyclic_time_columns(self):
+        df = pd.DataFrame(
+            {
+                "is_monsoon": [0, 1],
+                "typhoon_index": [0.0, 0.8],
+                "hour": [23, 0],
+                "day_of_week": [6, 0],
+                "month": [12, 1],
+            }
+        )
+
+        result = build_model_feature_frame(df)
+
+        self.assertEqual(list(result.columns), MODEL_FEATURE_COLUMNS)
+        self.assertNotIn("hour", result.columns)
+        self.assertNotIn("day_of_week", result.columns)
+        self.assertNotIn("month", result.columns)
+        self.assertAlmostEqual(result.loc[1, "hour_sin"], 0.0, places=7)
+        self.assertAlmostEqual(result.loc[1, "hour_cos"], 1.0, places=7)
+        self.assertAlmostEqual(result.loc[1, "month_sin"], 0.0, places=7)
+        self.assertAlmostEqual(result.loc[1, "month_cos"], 1.0, places=7)
+
     def test_save_model_outputs_rejects_canonical_key_collisions(self):
         holdout = pd.DataFrame({"ds": pd.date_range("2024-01-01", periods=2, freq="h"), "y": [10, 40]})
         predictions = build_prediction_frame(holdout, [10, 20], "test_model")
@@ -49,6 +77,10 @@ class ModelCommonTest(unittest.TestCase):
                     parse_args("gru")
 
             with patch("sys.argv", ["train.py", "--learning-rate", "1.5"]):
+                with self.assertRaises(SystemExit):
+                    parse_args("gru")
+
+            with patch("sys.argv", ["train.py", "--batch-size", "0"]):
                 with self.assertRaises(SystemExit):
                     parse_args("gru")
 
