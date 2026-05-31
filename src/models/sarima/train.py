@@ -5,8 +5,9 @@ from __future__ import annotations
 import argparse
 
 from src.models.common import (
-    FEATURE_COLUMNS,
+    MODEL_FEATURE_COLUMNS,
     add_common_args,
+    add_cyclic_time_features,
     build_prediction_frame,
     load_traffic_data,
     save_model_outputs,
@@ -33,9 +34,9 @@ def main() -> None:
     from statsmodels.tsa.statespace.sarimax import SARIMAX
 
     args = parse_args()
-    df = load_traffic_data(args.data_path)
+    df = add_cyclic_time_features(load_traffic_data(args.data_path))
     train, holdout = split_train_holdout(df, args.holdout_ratio)
-    features = FEATURE_COLUMNS
+    features = MODEL_FEATURE_COLUMNS
 
     model = SARIMAX(
         train["y"],

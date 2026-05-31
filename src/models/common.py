@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 from typing import Iterable
 
+import numpy as np
 import pandas as pd
 
 from src.evaluation.metrics import evaluate_predictions
@@ -20,6 +21,18 @@ RESULTS_DIR = PROJECT_ROOT / "experiments" / "results"
 MODELS_DIR = PROJECT_ROOT / "models"
 
 FEATURE_COLUMNS = ["is_monsoon", "typhoon_index", "hour", "day_of_week", "month"]
+STATIC_FEATURE_COLUMNS = ["is_monsoon", "typhoon_index"]
+CYCLIC_TIME_FEATURES = {
+    "hour": ("hour", 24, 0),
+    "day_of_week": ("dow", 7, 0),
+    "month": ("month", 12, 1),
+}
+CYCLIC_FEATURE_COLUMNS = [
+    f"{prefix}_{component}"
+    for prefix, _, _ in CYCLIC_TIME_FEATURES.values()
+    for component in ("sin", "cos")
+]
+MODEL_FEATURE_COLUMNS = [*STATIC_FEATURE_COLUMNS, *CYCLIC_FEATURE_COLUMNS]
 TARGET_COLUMN = "y"
 TIMESTAMP_COLUMN = "ds"
 
@@ -43,6 +56,29 @@ def load_traffic_data(path: Path = DATA_PATH) -> pd.DataFrame:
         raise ValueError(f"{path} is missing required columns: {missing}")
 
     return df.sort_values(TIMESTAMP_COLUMN).reset_index(drop=True)
+
+
+def add_cyclic_time_features(df: pd.DataFrame) -> pd.DataFrame:
+    """Add sin/cos encodings for cyclic calendar features."""
+    missing = sorted(set(CYCLIC_TIME_FEATURES) - set(df.columns))
+    if missing:
+        raise ValueError(f"cyclic feature source columns are missing: {missing}")
+
+    result = df.copy()
+    for source_column, (prefix, period, offset) in CYCLIC_TIME_FEATURES.items():
+        angle = 2 * np.pi * (result[source_column].astype(float) - offset) / period
+        result[f"{prefix}_sin"] = np.sin(angle)
+        result[f"{prefix}_cos"] = np.cos(angle)
+    return result
+
+
+def build_model_feature_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Return the normalized model feature frame used by sequence/SARIMA models."""
+    result = add_cyclic_time_features(df)
+    missing = sorted(set(MODEL_FEATURE_COLUMNS) - set(result.columns))
+    if missing:
+        raise ValueError(f"model feature columns are missing: {missing}")
+    return result[MODEL_FEATURE_COLUMNS].copy()
 
 
 def split_train_holdout(
