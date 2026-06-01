@@ -63,6 +63,20 @@ class ModelCommonTest(unittest.TestCase):
         self.assertAlmostEqual(result.loc[1, "month_sin"], 0.0, places=7)
         self.assertAlmostEqual(result.loc[1, "month_cos"], 1.0, places=7)
 
+    def test_build_model_feature_frame_rejects_invalid_cyclic_values(self):
+        df = pd.DataFrame(
+            {
+                "is_monsoon": [0, 1],
+                "typhoon_index": [0.0, 0.8],
+                "hour": [23, 24],
+                "day_of_week": [6, 0],
+                "month": [12, 1],
+            }
+        )
+
+        with self.assertRaisesRegex(ValueError, "hour contains invalid cyclic values"):
+            build_model_feature_frame(df)
+
     def test_save_model_outputs_rejects_canonical_key_collisions(self):
         holdout = pd.DataFrame({"ds": pd.date_range("2024-01-01", periods=2, freq="h"), "y": [10, 40]})
         predictions = build_prediction_frame(holdout, [10, 20], "test_model")

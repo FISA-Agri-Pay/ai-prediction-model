@@ -66,7 +66,16 @@ def add_cyclic_time_features(df: pd.DataFrame) -> pd.DataFrame:
 
     result = df.copy()
     for source_column, (prefix, period, offset) in CYCLIC_TIME_FEATURES.items():
-        angle = 2 * np.pi * (result[source_column].astype(float) - offset) / period
+        values = pd.to_numeric(result[source_column], errors="coerce")
+        invalid = values.isna() | (values < offset) | (values >= offset + period)
+        if invalid.any():
+            sample = result.loc[invalid, source_column].drop_duplicates().head(5).tolist()
+            raise ValueError(
+                f"{source_column} contains invalid cyclic values "
+                f"for range [{offset}, {offset + period}): {sample}"
+            )
+
+        angle = 2 * np.pi * (values - offset) / period
         result[f"{prefix}_sin"] = np.sin(angle)
         result[f"{prefix}_cos"] = np.cos(angle)
     return result

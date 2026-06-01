@@ -17,7 +17,7 @@ from src.models.common import (
     MODEL_FEATURE_COLUMNS,
     MODELS_DIR,
     add_common_args,
-    add_cyclic_time_features,
+    build_model_feature_frame,
     build_prediction_frame,
     load_traffic_data,
     save_model_outputs,
@@ -154,12 +154,13 @@ def main(model_name: str, model_cls: Callable[[int, int], _TorchSequenceRegresso
     torch.manual_seed(42)
     np.random.seed(42)
 
-    df = add_cyclic_time_features(load_traffic_data(args.data_path))
+    df = load_traffic_data(args.data_path)
+    model_frame = df[["y"]].join(build_model_feature_frame(df))
     train, holdout = split_train_holdout(df, args.holdout_ratio)
     columns = ["y", *MODEL_FEATURE_COLUMNS]
 
-    train_values = train[columns].to_numpy(dtype=float)
-    all_values = df[columns].to_numpy(dtype=float)
+    train_values = model_frame.iloc[: len(train)][columns].to_numpy(dtype=float)
+    all_values = model_frame[columns].to_numpy(dtype=float)
     scaled_train, scaling = scale_values(train_values)
     scaled_all, _ = scale_values(all_values, scaling)
 
