@@ -12,6 +12,62 @@ Kubernetes HPA는 현재 또는 최근 리소스 사용량을 보고 반응하�
 
 Autoscaling 관점에서는 실제 필요한 pod 수보다 적게 예측하는 under-provisioning이 서비스 지연이나 장애로 이어질 수 있으므로, under-provisioning rate를 primary metric으로 둔다. 반대로 over-provisioning은 비용 문제이므로 보조 지표로 함께 본다.
 
+## 프로젝트 구조
+
+이 레포는 데이터 생성, 모델 학습, 평가, 문서화를 분리해 관리한다.
+
+```text
+ai-prediction-model/
+├─ data/
+│  ├─ raw/                  # 생성된 원천 형태의 dummy CSV
+│  ├─ processed/            # 모델 공통 입력 데이터
+│  └─ predictions/          # 모델별 holdout 예측 결과
+├─ docs/
+│  ├─ assets/               # README/docs에서 사용하는 시각화 이미지
+│  ├─ experiment-notes.md   # 세부 실험 기록
+│  └─ run-guide.md          # 실행 방법
+├─ experiments/
+│  ├─ plots/                # 비교 그래프 출력
+│  └─ results/              # 모델별 metric JSON, 비교 CSV
+├─ models/                  # GRU/LSTM 학습 artifact
+├─ src/
+│  ├─ data/                 # synthetic data generator
+│  ├─ evaluation/           # metric, pod policy, plotting
+│  └─ models/               # Prophet, SARIMA, GRU, LSTM 학습 코드
+└─ tests/                   # 단위 테스트
+```
+
+## 전체 파이프라인
+
+실험 파이프라인은 synthetic traffic data를 생성한 뒤, 동일한 holdout 구간에서 모델을 비교하고 pod-level metric으로 후보를 선정하는 흐름이다.
+
+```text
+Synthetic data generation
+        |
+        v
+data/processed/traffic.csv
+        |
+        v
+Train / holdout split
+        |
+        +--> Prophet baseline
+        +--> SARIMA baseline
+        +--> GRU sequence model
+        +--> LSTM sequence model
+        |
+        v
+data/predictions/{model}_predictions.csv
+        |
+        v
+experiments/results/{model}_metrics.json
+        |
+        v
+Metric comparison + holdout visualization
+        |
+        v
+Candidate model decision
+```
+
 ## 문제 정의
 
 - 예측 대상: 시간 단위 request rate `y`
