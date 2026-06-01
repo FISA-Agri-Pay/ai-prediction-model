@@ -74,26 +74,68 @@ request_rate =
 
 이 설계는 모델이 단순 추세뿐 아니라 월별 농업 시즌, 주간/일간 반복 패턴, 날씨 이벤트, 갑작스러운 spike를 함께 다룰 수 있는지 확인하기 위한 것이다.
 
+## 전처리 과정
+
+모든 모델은 `data/processed/traffic.csv`를 기준 입력으로 사용한다. `ds`를 시간 순서로 정렬한 뒤 동일한 train/holdout split을 적용하고, 모델 특성에 맞게 입력 feature를 구성한다.
+
+공통 전처리 흐름은 다음과 같다.
+
+1. `ds` 기준으로 데이터를 시간 순서 정렬
+2. `ds`에서 `hour`, `day_of_week`, `month` 생성
+3. 앞쪽 80%를 train, 뒤쪽 20%를 holdout으로 분리
+4. 모델별 입력 feature 구성
+5. GRU/LSTM은 train 구간 통계로 standard scaling 적용
+
+### 시간 순환 feature 변환
+
+`hour`, `day_of_week`, `month`는 순환 feature다. `23시`와 `0시`, `12월`과 `1월`은 실제 시간 흐름에서는 이어져 있지만 raw integer로 넣으면 큰 숫자 차이로 인식될 수 있다.
+
+SARIMA와 GRU/LSTM에서는 이를 보완하기 위해 다음 sin/cos encoding을 적용한다.
+
+```text
+hour_sin = sin(2π * hour / 24)
+hour_cos = cos(2π * hour / 24)
+
+dow_sin = sin(2π * day_of_week / 7)
+dow_cos = cos(2π * day_of_week / 7)
+
+month_sin = sin(2π * (month - 1) / 12)
+month_cos = cos(2π * (month - 1) / 12)
+```
+
+### 모델별 전처리 차이
+
+| Model | Preprocessing |
+| --- | --- |
+| Prophet | `ds`, `y`, `is_monsoon`, `typhoon_index` 사용. 시간 seasonality는 Prophet 내부에서 처리 |
+| SARIMA | `is_monsoon`, `typhoon_index`, cyclic time feature를 exog로 사용 |
+| GRU | `y`와 외생 feature를 포함한 sequence window 생성 후 scaling |
+| LSTM | GRU와 동일한 sequence preprocessing 사용 |
+
+GRU/LSTM은 neural network 모델이므로 train 구간의 평균과 표준편차로 `y`와 feature를 standard scaling한다. 같은 scaling parameter를 holdout 구간에도 적용한다. Prophet과 SARIMA는 별도 standard scaling 없이 원래 scale의 `y`를 사용한다.
+
 ## 비교 모델 및 입력 전략
 
 모든 모델은 동일한 원천 데이터와 동일한 holdout 구간으로 평가한다. 다만 입력 feature 구성은 모델 특성에 맞게 다르게 설계했다.
 
 | Model | Input strategy | Role |
 | --- | --- | --- |
-| Prophet | `ds` 기반 seasonality + `is_monsoon`, `typhoon_index` | time-series baseline |
+| Prophet | `ds` 기반 seasonality + weather regressors | time-series baseline |
 | SARIMA | cyclic time exog + weather regressors | statistical baseline |
 | GRU | `y` sequence + cyclic time/weather features | sequence model |
 | LSTM | `y` sequence + cyclic time/weather features | sequence model |
 
-Prophet은 `ds` timestamp를 기반으로 daily, weekly, yearly seasonality를 내부적으로 모델링한다. 따라서 `hour`, `day_of_week`, `month`를 별도 숫자 feature로 넣지 않는다.
+### GRU/LSTM 학습 방식
 
-SARIMA와 GRU/LSTM은 timestamp 자체를 Prophet처럼 해석하지 못하므로 시간 정보를 명시적 feature로 전달해야 한다. 이때 raw integer를 그대로 쓰지 않고 다음 cyclic encoding을 적용한다.
+GRU/LSTM은 `y`의 과거 window와 외생 feature를 함께 입력하는 sequence model이다. 현재 실험에서는 하루 단위 흐름을 입력 window로 반영하기 위해 기본 `sequence_length=24`를 사용한다.
 
-| Raw feature | Encoded features |
-| --- | --- |
-| `hour` | `hour_sin`, `hour_cos` |
-| `day_of_week` | `dow_sin`, `dow_cos` |
-| `month` | `month_sin`, `month_cos` |
+초기 실험의 full-batch 학습은 epoch 수만큼만 optimizer update가 발생해 학습이 부족할 수 있었다. 현재 학습 방식은 다음과 같이 정리했다.
+
+- `DataLoader` 기반 mini-batch 학습
+- 기본 `batch_size=256`
+- 기본 `epochs=50`
+- `torch.nn.Module` 기반 모델 구조
+- 학습 시 `model.train()`, holdout 추론 시 `model.eval()` 사용
 
 ## 평가 기준
 
@@ -124,19 +166,6 @@ required_pods = clip(ceil(max(request_rate, 0) / effective_capacity), min_pods, 
 | 4 | Over-provisioning rate | `(1 / N) * sum(1[predicted_pods > actual_pods])` | Lower is better |
 
 SMAPE는 traffic value 예측 오차를 보고, 나머지 세 지표는 실제 autoscaling decision의 품질을 본다. 이 프로젝트에서는 pod 부족을 가장 위험한 실패로 보기 때문에 under-provisioning rate를 primary metric으로 둔다.
-
-## 모델 개선 내용
-
-초기 GRU/LSTM/SARIMA 실험에서는 `hour`, `day_of_week`, `month`를 정수 feature로 그대로 사용했다. 이 경우 `23시 -> 0시`, `12월 -> 1월`처럼 실제로는 이어지는 시점이 큰 숫자 차이로 인식된다.
-
-이를 해결하기 위해 다음 개선을 적용했다.
-
-- `hour`, `day_of_week`, `month`를 sin/cos cyclic feature로 변환
-- GRU/LSTM 학습을 full-batch에서 `DataLoader` 기반 mini-batch 방식으로 변경
-- GRU/LSTM 모델 클래스를 `torch.nn.Module` 기반으로 정리
-- GRU/LSTM 기본 epoch를 20에서 50으로 조정
-
-이 개선은 특히 sequence model의 학습 안정성과 holdout 예측 품질을 크게 바꿨다.
 
 ## 현재 실험 결과
 
