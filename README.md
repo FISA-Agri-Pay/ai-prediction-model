@@ -1,248 +1,224 @@
 # AI Prediction Model Selection
 
-Kubernetes predictive autoscaling에 사용할 트래픽 예측 모델을 선정하기 위한 실험 레포다. Prophet, SARIMA, GRU, LSTM을 동일한 데이터와 평가 기준으로 비교하고, 선정된 Prophet 계열 모델에 대해 Optuna 튜닝과 OpenEvolve 기반 모델 recipe 최적화를 추가로 수행한다.
+Kubernetes predictive autoscaling에 사용할 traffic forecasting 모델을 비교하고, pod 부족 위험을 줄이는 후보 모델을 선정하기 위한 실험 레포다.
+
+이 README는 프로젝트의 문제 정의, synthetic data 설계 기준, 모델별 입력 전략, 평가 기준, 최신 실험 결과와 현재 후보 모델 판단을 요약한다. 실행 명령어와 세부 실험 기록은 `docs/`에 분리해 관리한다.
 
 ## 프로젝트 목적
 
-Reactive autoscaling은 트래픽 증가가 발생한 뒤에 pod 수를 조정한다. 급격한 트래픽 증가가 발생하면 HPA가 반응하기 전까지 지연이 생기고, 이 구간에서 서비스 응답 지연이나 장애가 발생할 수 있다.
+Kubernetes HPA는 현재 또는 최근 리소스 사용량을 보고 반응하는 방식이기 때문에, 트래픽이 급격히 증가하는 시점에는 pod 증설이 늦어질 수 있다. 농업 BNPL 서비스처럼 특정 작물 시즌, 날씨 이벤트, 구매 집중 기간에 트래픽이 몰리는 도메인에서는 reactive autoscaling만으로는 순간적인 pod 부족을 막기 어렵다.
 
-이 프로젝트는 트래픽을 사전에 예측하고 예측값을 required pod 수로 변환하여, Kubernetes autoscaling에 사용할 최종 예측 모델을 선정하는 것을 목표로 한다.
+이 프로젝트의 목적은 과거 traffic pattern을 기반으로 미래 request rate를 예측하고, 예측값을 필요한 pod 수로 변환해 predictive autoscaling 후보 모델을 선정하는 것이다.
 
-## 디렉터리 구조
-
-```text
-ai-prediction-model/
-├─ README.md
-├─ requirements.txt
-├─ docs/
-│  ├─ run-guide.md
-│  ├─ problem-definition.md
-│  ├─ experiment-design.md
-│  ├─ model-selection-criteria.md
-│  ├─ final-decision.md
-│  ├─ prompt-log.md
-│  ├─ assets/
-│  └─ module-spec/
-├─ src/
-│  ├─ data/
-│  │  └─ generate_dummy_data.py
-│  ├─ models/
-│  │  ├─ prophet/
-│  │  │  ├─ train.py
-│  │  │  ├─ tune.py
-│  │  │  └─ openevolve_train.py
-│  │  ├─ sarima/
-│  │  ├─ gru/
-│  │  └─ lstm/
-│  ├─ evaluation/
-│  │  ├─ compare_models.py
-│  │  ├─ metrics.py
-│  │  ├─ pod_policy.py
-│  │  ├─ plot_holdout_comparison.py
-│  │  └─ plot_holdout_overview.py
-│  ├─ optimization/
-│  │  └─ autoscaling_score.py
-│  └─ utils/
-├─ data/
-│  ├─ raw/
-│  ├─ processed/
-│  └─ predictions/
-├─ experiments/
-│  ├─ configs/
-│  ├─ openevolve/
-│  ├─ results/
-│  └─ plots/
-├─ models/
-├─ notebooks/
-└─ tests/
-```
-
-## 전체 파이프라인
-
-```text
-Synthetic agriculture traffic data
-        |
-        v
-data/processed/traffic.csv
-        |
-        +--> Prophet baseline ---------> prophet_metrics.json
-        +--> SARIMA baseline ----------> sarima_metrics.json
-        +--> GRU baseline -------------> gru_metrics.json
-        +--> LSTM baseline ------------> lstm_metrics.json
-        |
-        +--> Optuna tuned Prophet -----> prophet_tuned_metrics.json
-        +--> OpenEvolve Prophet recipe -> openevolve_prophet_metrics.json
-        |
-        v
-experiments/results/comparison_results.csv
-        |
-        +--> docs/assets/*holdout*.png
-        |
-        v
-experiments/results/best_model.json
-```
-
-실행 절차는 [실행 가이드](docs/run-guide.md)를 참고한다.
+Autoscaling 관점에서는 실제 필요한 pod 수보다 적게 예측하는 under-provisioning이 서비스 지연이나 장애로 이어질 수 있으므로, under-provisioning rate를 primary metric으로 둔다. 반대로 over-provisioning은 비용 문제이므로 보조 지표로 함께 본다.
 
 ## 문제 정의
 
-- 입력: 시간별 트래픽 데이터와 보조 feature
-- 출력: holdout 구간의 트래픽 예측값과 required pod 수
-- 목표: 동일한 데이터와 동일한 holdout 조건에서 후보 모델을 비교하고 최종 모델 선정 근거를 문서화
-- Primary metric: Under-provisioning rate
+- 예측 대상: 시간 단위 request rate `y`
+- 활용 목적: 예측 request rate 기반 필요 pod 수 산정
+- 실험 방식: 5년치 hourly data 중 앞쪽 80%를 train, 뒤쪽 20%를 holdout으로 사용
+- 최우선 목표: holdout 구간의 under-provisioning rate 최소화
 
-자세한 문제 정의는 [docs/problem-definition.md](docs/problem-definition.md)를 참고한다.
+모델은 단순히 traffic 값을 정확히 맞추는 것만으로 평가하지 않는다. 예측값이 Kubernetes pod decision으로 변환됐을 때 실제 필요 pod보다 부족한지, 과하게 많은지까지 함께 평가한다.
 
-## 후보 모델
+## 데이터셋
 
-| 모델 | 역할 |
+기본 데이터 경로는 `data/processed/traffic.csv`다. 현재 데이터는 2020-01-01부터 2024-12-31 23:00까지의 5년치 시간 단위 synthetic traffic data다.
+
+| Split | Rows | Period |
+| --- | ---: | --- |
+| Train | 35,078 | 2020-01-01 00:00 - 2024-01-01 13:00 |
+| Holdout | 8,770 | 2024-01-01 14:00 - 2024-12-31 23:00 |
+
+주요 컬럼은 다음과 같다.
+
+| Column | Description |
 | --- | --- |
-| Prophet | 계절성과 이벤트성 변동을 빠르게 반영하는 baseline |
-| SARIMA | 전통적인 통계 기반 시계열 baseline |
-| GRU | 순차 패턴을 학습하는 경량 recurrent neural network |
-| LSTM | 장기 의존성을 고려하는 recurrent neural network |
-| Tuned Prophet | Optuna로 Prophet 하이퍼파라미터를 튜닝한 모델 |
-| OpenEvolve Prophet | OpenEvolve로 Prophet 모델 recipe를 최적화한 모델 |
+| `ds` | timestamp |
+| `y` | 예측 대상 request rate |
+| `is_monsoon` | 장마 여부 |
+| `typhoon_index` | 태풍 영향 지수 |
+| `hour` | 시간대, 0-23 |
+| `day_of_week` | 요일, 0-6 |
+| `month` | 월, 1-12 |
 
-## 데이터 생성 방식
+## 더미 데이터 생성 기준
 
-Synthetic traffic data는 기존 `prophet-autoscaler`의 더미 데이터 생성 아이디어를 참고하여 새 구조에 맞게 재구성했다. 농자재 BNPL 서비스에서 주요 수요가 발생하는 작물은 벼, 고추, 콩, 마늘, 양파로 두고, 각 작물의 파종/정식, 생육 관리, 수확, 상환 조회 시기를 월별 activity로 반영한다.
+실제 서비스 traffic data는 접근 제약과 개인정보/운영정보 노출 위험이 있으므로, 모델 비교를 위한 재현 가능한 synthetic data를 생성했다. 단순 랜덤 데이터가 아니라 농업 BNPL 서비스에서 기대할 수 있는 계절성, 요일성, 시간대 패턴, 날씨 이벤트, 이상 트래픽을 조합했다.
 
-기본 생성 기간은 `2020-01-01`부터 `2024-12-31 23:00`까지의 5년이며, 단위는 1시간이다.
+traffic target은 다음 구조를 따른다.
 
-반영된 패턴:
+```text
+request_rate =
+  base_request_rate
+  * crop_activity_score
+  * weekly_weight
+  * hourly_weight
+  * typhoon_effect
+  * monsoon_effect
+  * anomaly_boost
+  + noise
+```
 
-- 작물별 월별 계절성
-- 요일별 패턴
-- 시간대별 패턴
-- 장마철 변동성
-- 태풍 영향
-- 이상치 이벤트
+생성 기준은 다음과 같다.
 
-### 작물별 월별 Activity 기준
+| Component | Description |
+| --- | --- |
+| Crop activity | 쌀, 고추, 콩, 마늘, 양파의 월별 activity weight를 조합 |
+| Weekly pattern | 평일 traffic을 높게, 주말 traffic을 낮게 반영 |
+| Hourly pattern | 오전/저녁 피크와 야간 저점 반영 |
+| Monsoon | 매년 6월 말-7월 말 장마 구간 반영 |
+| Typhoon | 매년 8-9월 중 태풍 영향 지수 생성 |
+| Anomaly | 봄 구매 spike, 태풍 이후 복구 spike, 장마 변동성 주입 |
+| Noise | base request rate의 3% 수준 Gaussian noise 추가 |
 
-작물별 월별 activity는 내부 생성 로직에서 가중 평균되어 하나의 전체 농업 수요 계절성으로 반영된다. 가중치는 벼 `0.30`, 고추 `0.25`, 콩 `0.15`, 마늘 `0.15`, 양파 `0.15`로 둔다.
+이 설계는 모델이 단순 추세뿐 아니라 월별 농업 시즌, 주간/일간 반복 패턴, 날씨 이벤트, 갑작스러운 spike를 함께 다룰 수 있는지 확인하기 위한 것이다.
 
-| 작물 | 주요 수요 시기 | 트래픽 반영 의도 |
+## 비교 모델 및 입력 전략
+
+모든 모델은 동일한 원천 데이터와 동일한 holdout 구간으로 평가한다. 다만 입력 feature 구성은 모델 특성에 맞게 다르게 설계했다.
+
+| Model | Input strategy | Role |
 | --- | --- | --- |
-| 벼 | 3-5월 파종/모내기 준비, 9-10월 수확·상환 | 봄철 농자재 구매와 가을 상환 조회 반영 |
-| 고추 | 3-4월 파종/정식, 7-9월 방제·수확·상환 | 연초 최고 피크와 여름 병충해/상환 수요 반영 |
-| 콩 | 5-6월 파종 준비, 10-11월 수확·상환 | 초여름 구매와 가을 상환 조회 반영 |
-| 마늘 | 5-6월 수확·상환, 10-11월 파종 | 여름 상환과 가을 파종 수요 반영 |
-| 양파 | 5-6월 수확·상환, 9-10월 정식 | 봄/초여름 상환과 가을 정식 수요 반영 |
+| Prophet | `ds` 기반 seasonality + `is_monsoon`, `typhoon_index` | time-series baseline |
+| SARIMA | cyclic time exog + weather regressors | statistical baseline |
+| GRU | `y` sequence + cyclic time/weather features | sequence model |
+| LSTM | `y` sequence + cyclic time/weather features | sequence model |
 
-작물별 activity는 별도 모델 입력 컬럼으로 저장하지 않고, 기존 데이터 스키마를 유지한 채 `request_rate` 생성에만 반영한다. 이후 Prophet/SARIMA/GRU/LSTM 및 OpenEvolve 평가 코드는 기존 컬럼 기준으로 그대로 동작한다.
+Prophet은 `ds` timestamp를 기반으로 daily, weekly, yearly seasonality를 내부적으로 모델링한다. 따라서 `hour`, `day_of_week`, `month`를 별도 숫자 feature로 넣지 않는다.
 
-`data/processed/traffic.csv` 주요 컬럼:
+SARIMA와 GRU/LSTM은 timestamp 자체를 Prophet처럼 해석하지 못하므로 시간 정보를 명시적 feature로 전달해야 한다. 이때 raw integer를 그대로 쓰지 않고 다음 cyclic encoding을 적용한다.
 
-- `ds`: timestamp
-- `y`: 예측 대상 request rate
-- `request_rate`: synthetic request rate
-- `cpu_utilization`: synthetic CPU utilization
-- `is_monsoon`: 장마 여부
-- `typhoon_index`: 태풍 영향 지수
-- `hour`, `day_of_week`, `month`: calendar features
+| Raw feature | Encoded features |
+| --- | --- |
+| `hour` | `hour_sin`, `hour_cos` |
+| `day_of_week` | `dow_sin`, `dow_cos` |
+| `month` | `month_sin`, `month_cos` |
 
 ## 평가 기준
 
-평가는 [src/evaluation/metrics.py](src/evaluation/metrics.py)와 [src/evaluation/pod_policy.py](src/evaluation/pod_policy.py)의 공통 로직을 사용한다.
-
-기본 pod 정책:
+예측 request rate는 pod policy를 통해 pod 수로 변환한다.
 
 ```text
-capacity_per_pod = 21.1
-safety_margin = 0.2
-min_pods = 1
-max_pods = 8
+effective_capacity = capacity_per_pod * (1 - safety_margin)
+required_pods = clip(ceil(max(request_rate, 0) / effective_capacity), min_pods, max_pods)
 ```
 
-| 지표 | 최적화 방향 | autoscaling 관점 |
-| --- | --- | --- |
-| SMAPE | 낮을수록 좋음 | 트래픽 예측 자체의 정확도 |
-| Pod accuracy | 높을수록 좋음 | autoscaling decision 일치도 |
-| Under-provisioning rate | 가장 낮아야 함 | 서비스 지연/장애 위험 |
-| Over-provisioning rate | 낮을수록 비용 효율적 | 불필요한 pod 비용 |
+현재 policy는 다음 값을 사용한다.
 
-Autoscaling에서는 pod 부족이 서비스 장애로 이어질 수 있으므로 under-provisioning rate를 primary metric으로 둔다. 자세한 기준은 [docs/model-selection-criteria.md](docs/model-selection-criteria.md)를 참고한다.
+| Parameter | Value |
+| --- | ---: |
+| `capacity_per_pod` | 21.1 |
+| `safety_margin` | 0.2 |
+| `effective_capacity` | 16.88 |
+| `min_pods` | 1 |
+| `max_pods` | 8 |
 
-## 최적화 방식
+모델 선정 우선순위는 다음과 같다. 표 안의 `N`은 holdout timestamp 수를 의미한다.
 
-### Optuna Tuned Prophet
+| Priority | Metric | Formula | Direction |
+| ---: | --- | --- | --- |
+| 1 | Under-provisioning rate | `(1 / N) * sum(1[predicted_pods < actual_pods])` | Lower is better |
+| 2 | SMAPE | `(1 / N) * sum(abs(y - y_hat) / ((abs(y) + abs(y_hat)) / 2))` | Lower is better |
+| 3 | Pod accuracy | `(1 / N) * sum(1[predicted_pods == actual_pods])` | Higher is better |
+| 4 | Over-provisioning rate | `(1 / N) * sum(1[predicted_pods > actual_pods])` | Lower is better |
 
-Optuna는 Prophet 모델 구조를 고정한 상태에서 하이퍼파라미터 공간을 탐색한다. objective score는 under-provisioning rate를 중심으로 SMAPE와 over-provisioning rate를 보조 penalty로 반영한다.
+SMAPE는 traffic value 예측 오차를 보고, 나머지 세 지표는 실제 autoscaling decision의 품질을 본다. 이 프로젝트에서는 pod 부족을 가장 위험한 실패로 보기 때문에 under-provisioning rate를 primary metric으로 둔다.
 
-```text
-score = under_provisioning_rate + 0.1 * smape + 0.2 * over_provisioning_rate
-```
+## 모델 개선 내용
 
-| 파라미터 | 의미 |
-| --- | --- |
-| `changepoint_prior_scale` | 추세 변화점에 얼마나 민감하게 반응할지 조정한다. |
-| `seasonality_prior_scale` | 일/주/연 단위 계절성 패턴을 얼마나 강하게 반영할지 조정한다. |
-| `holidays_prior_scale` | 이벤트성 효과를 얼마나 강하게 허용할지 조정한다. |
-| `changepoint_range` | 학습 데이터 중 어느 구간까지 changepoint 후보를 둘지 정한다. |
-| `seasonality_mode` | 계절성을 `additive` 또는 `multiplicative` 방식으로 반영할지 결정한다. |
+초기 GRU/LSTM/SARIMA 실험에서는 `hour`, `day_of_week`, `month`를 정수 feature로 그대로 사용했다. 이 경우 `23시 -> 0시`, `12월 -> 1월`처럼 실제로는 이어지는 시점이 큰 숫자 차이로 인식된다.
 
-### OpenEvolve Prophet
+이를 해결하기 위해 다음 개선을 적용했다.
 
-OpenEvolve는 Prophet 라이브러리 자체가 아니라 Prophet 모델 recipe 코드를 최적화한다.
+- `hour`, `day_of_week`, `month`를 sin/cos cyclic feature로 변환
+- GRU/LSTM 학습을 full-batch에서 `DataLoader` 기반 mini-batch 방식으로 변경
+- GRU/LSTM 모델 클래스를 `torch.nn.Module` 기반으로 정리
+- GRU/LSTM 기본 epoch를 20에서 50으로 조정
 
-| 최적화 대상 | 의미 |
-| --- | --- |
-| Prophet 하이퍼파라미터 | 추세 변화 민감도, 계절성 강도, changepoint 범위, seasonality mode 등을 조정한다. |
-| Regressor 선택 | Prophet에 외생 변수로 추가할 feature 조합을 선택한다. |
-| Feature engineering | 원본 컬럼에서 `is_peak_hour`, `is_weekend`, `monsoon_typhoon` 같은 파생 feature를 만든다. |
-| Custom seasonality | 기본 daily/weekly/yearly seasonality 외에 monthly seasonality 같은 주기를 추가한다. |
-| Target transform hook | 필요하면 학습 target과 예측값을 변환하는 구조를 탐색할 수 있게 한다. |
-
-선정된 OpenEvolve Prophet recipe는 `is_monsoon`, `typhoon_index`, `is_peak_hour`, `is_weekend`, `monsoon_typhoon`을 regressor로 사용하고, period `30.5`, Fourier order `5`의 monthly seasonality를 추가한다.
+이 개선은 특히 sequence model의 학습 안정성과 holdout 예측 품질을 크게 바꿨다.
 
 ## 현재 실험 결과
 
-5년치 synthetic data 기준 기본 후보 모델 비교에서는 Prophet이 가장 좋은 baseline으로 선정되었다.
+아래 표는 기본 모델 비교 결과다. 순위는 primary metric인 under-provisioning rate 기준이다.
 
-| Rank | 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate |
+| Rank | Model | SMAPE | Pod accuracy | Under-provisioning | Over-provisioning |
 | ---: | --- | ---: | ---: | ---: | ---: |
-| 1 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 |
-| 2 | GRU | 0.7730 | 0.4829 | 0.1840 | 0.3331 |
-| 3 | LSTM | 0.7652 | 0.5250 | 0.2083 | 0.2667 |
-| 4 | SARIMA | 1.8726 | 0.5895 | 0.4105 | 0.0000 |
+| 1 | GRU | 0.4064 | 0.8442 | 0.0426 | 0.1131 |
+| 2 | LSTM | 0.3931 | 0.8806 | 0.0555 | 0.0639 |
+| 3 | Prophet | 0.6368 | 0.6832 | 0.1268 | 0.1900 |
+| 4 | SARIMA | 0.8197 | 0.6083 | 0.3762 | 0.0155 |
 
-![Model comparison](docs/assets/model_comparison.png)
+## 결과 해석
 
-Prophet 계열 추가 최적화 결과:
+GRU는 under-provisioning rate가 가장 낮아 pod 부족 위험을 줄이는 관점에서 가장 유리했다. Primary metric 기준으로는 현재 1순위 후보다.
 
-| 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate |
-| --- | ---: | ---: | ---: | ---: |
-| Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 |
-| Tuned Prophet | 0.6338 | 0.6796 | 0.1238 | 0.1966 |
-| OpenEvolve Prophet | 0.6347 | 0.6861 | 0.1253 | 0.1886 |
+LSTM은 GRU보다 under-provisioning rate는 약간 높지만, SMAPE, pod accuracy, over-provisioning rate에서 가장 균형적인 결과를 보였다. 운영 비용과 예측 정확도의 균형을 본다면 강한 보조 후보로 볼 수 있다.
 
-Tuned Prophet은 under-provisioning rate를 `0.1268`에서 `0.1238`로 낮췄고, SMAPE도 `0.6369`에서 `0.6338`로 소폭 개선했다. OpenEvolve Prophet은 pod accuracy와 over-provisioning rate에서 가장 좋은 결과를 보였지만, primary metric 기준으로는 Tuned Prophet보다 낮지 않았다.
+Prophet은 안정적인 baseline이지만, 개선된 GRU/LSTM과 비교하면 primary metric에서 뒤처졌다. 다만 Prophet은 별도 복잡한 sequence 학습 없이 timestamp seasonality를 안정적으로 처리한다는 장점이 있다.
 
-![Holdout year overview](docs/assets/holdout_year_overview.png)
+SARIMA는 cyclic exog 적용 후에도 수렴 문제가 발생했고 under-provisioning rate가 높아 최종 후보에서 제외했다.
 
-### Holdout 상세 비교
+
+
+### GRU holdout 비교
+
+![GRU holdout comparison](docs/assets/gru_holdout_comparison.png)
+
+### LSTM holdout 비교
+
+![LSTM holdout comparison](docs/assets/lstm_holdout_comparison.png)
+
+### Prophet holdout 비교
 
 ![Prophet holdout comparison](docs/assets/prophet_holdout_comparison.png)
 
-![Tuned Prophet holdout comparison](docs/assets/prophet_tuned_holdout_comparison.png)
+### SARIMA holdout 비교
 
-![OpenEvolve Prophet holdout comparison](docs/assets/openevolve_prophet_holdout_comparison.png)
+![SARIMA holdout comparison](docs/assets/sarima_holdout_comparison.png)
 
-## 최종 사용 모델
+## Troubleshooting
 
-최종 사용 모델은 **Tuned Prophet**으로 선정한다.
+### 시간 feature 전처리 문제
 
-선정 기준은 Kubernetes predictive autoscaling에서 가장 중요한 지표를 under-provisioning rate로 두었기 때문이다. Tuned Prophet은 비교 대상 중 under-provisioning rate가 `0.1238`로 가장 낮아, 실제 필요한 pod 수보다 적게 예측할 위험이 가장 작다.
+초기 sequence/statistical 모델은 `hour`, `day_of_week`, `month`를 raw integer feature로 사용했다. 이 표현은 시간의 순환성을 반영하지 못해 GRU/LSTM 예측이 과대 진동하거나 SARIMA 예측이 불안정해지는 원인이 되었다.
 
-OpenEvolve Prophet은 pod accuracy와 over-provisioning rate에서 가장 좋은 결과를 보였지만, primary metric인 under-provisioning rate 기준으로는 Tuned Prophet보다 낮지 않았다. 따라서 최종 운영 후보는 Tuned Prophet으로 두고, OpenEvolve Prophet은 추가 최적화 가능성이 있는 보조 후보로 정리한다.
+전처리 및 학습 방식 개선 전후 지표는 다음과 같다.
+
+| Model | Version | SMAPE | Pod accuracy | Under-provisioning | Over-provisioning |
+| --- | --- | ---: | ---: | ---: | ---: |
+| GRU | raw integer time | 0.7730 | 0.4829 | 0.1840 | 0.3331 |
+| GRU | cyclic encoding + mini-batch | 0.4064 | 0.8442 | 0.0426 | 0.1131 |
+| LSTM | raw integer time | 0.7652 | 0.5250 | 0.2083 | 0.2667 |
+| LSTM | cyclic encoding + mini-batch | 0.3931 | 0.8806 | 0.0555 | 0.0639 |
+| SARIMA | raw integer time | 1.8726 | 0.5895 | 0.4105 | 0.0000 |
+| SARIMA | cyclic exog | 0.8197 | 0.6083 | 0.3762 | 0.0155 |
+
+GRU/LSTM은 전처리와 학습 방식 개선 후 성능이 크게 향상됐다. SARIMA는 0에 가까운 예측으로 붕괴하던 문제는 완화됐지만, 여전히 under-provisioning rate가 높았다.
+
+### SARIMA 학습 시간 및 수렴 문제
+
+SARIMA는 전체 train 구간 35,078행과 seasonal order `1,0,1,24` 조합에서 학습 시간이 매우 길었고, 다음 수렴 경고가 발생했다.
+
+```text
+Maximum Likelihood optimization failed to converge
+```
+
+예측 결과는 생성됐지만 under-provisioning rate가 `0.3762`로 높아 autoscaling 후보로는 부적합하다고 판단했다.
+
+## 현재 기준 후보 모델
+
+현재 기본 모델 비교 기준 1순위 후보는 GRU다. Primary metric인 under-provisioning rate가 가장 낮아 autoscaling 안정성 관점에서 가장 좋은 결과를 보였다.
+
+LSTM은 보조 후보로 유지한다. Under-provisioning rate는 GRU보다 높지만, SMAPE, pod accuracy, over-provisioning rate에서 더 균형적인 결과를 보였다.
+
+다만 GRU/LSTM은 아직 별도 hyperparameter tuning을 수행하지 않았다. 최종 운영 모델 확정 전 sequence model tuning을 수행하는 것이 자연스러운 다음 단계다.
 
 ## 참고 문서
 
 - [실행 가이드](docs/run-guide.md)
-- [문제 정의](docs/problem-definition.md)
 - [실험 설계](docs/experiment-design.md)
 - [모델 선정 기준](docs/model-selection-criteria.md)
-- [최종 모델 선정 결과](docs/final-decision.md)
-- [프롬프트 기록](docs/prompt-log.md)
+- [문제 정의](docs/problem-definition.md)
+- [실험 기록](docs/experiment-notes.md)
+- [시각화 자료](docs/assets/)
