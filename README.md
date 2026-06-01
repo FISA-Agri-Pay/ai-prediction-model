@@ -234,6 +234,8 @@ SMAPE는 traffic value 예측 오차를 보고, 나머지 세 지표는 실제 a
 | 3 | Prophet | 0.6368 | 0.6832 | 0.1268 | 0.1900 |
 | 4 | SARIMA | 0.8197 | 0.6083 | 0.3762 | 0.0155 |
 
+![Model comparison](docs/assets/model_comparison.png)
+
 ## 결과 해석
 
 GRU는 under-provisioning rate가 가장 낮아 pod 부족 위험을 줄이는 관점에서 가장 유리했다. Primary metric 기준으로는 현재 1순위 후보다.
