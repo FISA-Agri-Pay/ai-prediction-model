@@ -33,27 +33,50 @@ class ScalingParams:
 
 class SequenceRegressor:
     @staticmethod
-    def gru(input_size: int, hidden_size: int):
+    def gru(
+        input_size: int,
+        hidden_size: int,
+        num_layers: int = 1,
+        dropout: float = 0.0,
+    ):
         import torch
 
-        return _TorchSequenceRegressor(torch.nn.GRU, input_size, hidden_size)
+        return _TorchSequenceRegressor(torch.nn.GRU, input_size, hidden_size, num_layers, dropout)
 
     @staticmethod
-    def lstm(input_size: int, hidden_size: int):
+    def lstm(
+        input_size: int,
+        hidden_size: int,
+        num_layers: int = 1,
+        dropout: float = 0.0,
+    ):
         import torch
 
-        return _TorchSequenceRegressor(torch.nn.LSTM, input_size, hidden_size)
+        return _TorchSequenceRegressor(torch.nn.LSTM, input_size, hidden_size, num_layers, dropout)
 
 
 _TorchModuleBase = torch.nn.Module if torch is not None else object
 
 
 class _TorchSequenceRegressor(_TorchModuleBase):
-    def __init__(self, recurrent_cls, input_size: int, hidden_size: int):
+    def __init__(
+        self,
+        recurrent_cls,
+        input_size: int,
+        hidden_size: int,
+        num_layers: int = 1,
+        dropout: float = 0.0,
+    ):
         import torch
 
         super().__init__()
-        self.recurrent = recurrent_cls(input_size=input_size, hidden_size=hidden_size, batch_first=True)
+        self.recurrent = recurrent_cls(
+            input_size=input_size,
+            hidden_size=hidden_size,
+            num_layers=num_layers,
+            dropout=dropout if num_layers > 1 else 0.0,
+            batch_first=True,
+        )
         self.output = torch.nn.Linear(hidden_size, 1)
 
     def forward(self, inputs):
@@ -69,6 +92,10 @@ def parse_args(model_name: str) -> argparse.Namespace:
     parser.add_argument("--batch-size", type=int, default=256)
     parser.add_argument("--hidden-size", type=int, default=32)
     parser.add_argument("--learning-rate", type=float, default=0.01)
+    parser.add_argument("--num-layers", type=int, default=1)
+    parser.add_argument("--dropout", type=float, default=0.0)
+    parser.add_argument("--weight-decay", type=float, default=0.0)
+    parser.add_argument("--gradient-clip", type=float, default=0.0)
     args = parser.parse_args()
 
     if args.sequence_length <= 0:
@@ -81,6 +108,14 @@ def parse_args(model_name: str) -> argparse.Namespace:
         parser.error("--hidden-size must be a positive integer")
     if not 0 < args.learning_rate < 1:
         parser.error("--learning-rate must be greater than 0 and less than 1")
+    if args.num_layers <= 0:
+        parser.error("--num-layers must be a positive integer")
+    if not 0 <= args.dropout < 1:
+        parser.error("--dropout must be greater than or equal to 0 and less than 1")
+    if args.weight_decay < 0:
+        parser.error("--weight-decay must be non-negative")
+    if args.gradient_clip < 0:
+        parser.error("--gradient-clip must be non-negative")
 
     return args
 
@@ -146,9 +181,65 @@ def recursive_holdout_forecast(
     return np.asarray(predictions, dtype=np.float32)
 
 
-def main(model_name: str, model_cls: Callable[[int, int], _TorchSequenceRegressor]) -> None:
+def train_sequence_regressor(
+    model,
+    train_x: np.ndarray,
+    train_y: np.ndarray,
+    epochs: int,
+    learning_rate: float,
+    batch_size: int = 0,
+    weight_decay: float = 0.0,
+    gradient_clip: float = 0.0,
+) -> None:
+    """Train a sequence regressor with full-batch or mini-batch updates."""
     import torch
-    from torch.utils.data import DataLoader, TensorDataset
+
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
+    loss_fn = torch.nn.MSELoss()
+
+    if hasattr(model, "train"):
+        model.train()
+
+    train_x_tensor = torch.tensor(train_x)
+    train_y_tensor = torch.tensor(train_y)
+    sample_count = len(train_x_tensor)
+    effective_batch_size = batch_size if batch_size > 0 else sample_count
+
+    for _ in range(epochs):
+        permutation = torch.randperm(sample_count)
+        for start in range(0, sample_count, effective_batch_size):
+            batch_indices = permutation[start : start + effective_batch_size]
+            optimizer.zero_grad()
+            loss = loss_fn(model(train_x_tensor[batch_indices]), train_y_tensor[batch_indices])
+            loss.backward()
+            if gradient_clip > 0:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), gradient_clip)
+            optimizer.step()
+
+
+def forecast_sequence_values(
+    model,
+    train: np.ndarray,
+    forecast_frame: np.ndarray,
+    sequence_length: int,
+) -> tuple[np.ndarray, ScalingParams]:
+    """Scale rows, recursively forecast the tail frame, and invert target scaling."""
+    _, scaling = scale_values(train)
+    combined = np.vstack([train, forecast_frame])
+    scaled_combined, _ = scale_values(combined, scaling)
+    scaled_predictions = recursive_holdout_forecast(
+        model,
+        scaled_combined,
+        holdout_start=len(train),
+        sequence_length=sequence_length,
+    )
+    target_mean = scaling.mean[0]
+    target_std = scaling.std[0]
+    return np.maximum((scaled_predictions * target_std) + target_mean, 0), scaling
+
+
+def main(model_name: str, model_cls: Callable[..., _TorchSequenceRegressor]) -> None:
+    import torch
 
     args = parse_args(model_name)
     torch.manual_seed(42)
@@ -167,25 +258,22 @@ def main(model_name: str, model_cls: Callable[[int, int], _TorchSequenceRegresso
     train_x, train_y = make_sequences(scaled_train, args.sequence_length)
     holdout_start = len(train)
 
-    model = model_cls(input_size=len(columns), hidden_size=args.hidden_size)
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.learning_rate)
-    loss_fn = torch.nn.MSELoss()
-
-    train_x_tensor = torch.tensor(train_x)
-    train_y_tensor = torch.tensor(train_y)
-    train_dataset = TensorDataset(train_x_tensor, train_y_tensor)
-    train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
-    epoch_losses = []
-    for _ in range(args.epochs):
-        model.train()
-        total_loss = 0.0
-        for batch_x, batch_y in train_loader:
-            optimizer.zero_grad()
-            loss = loss_fn(model(batch_x), batch_y)
-            loss.backward()
-            optimizer.step()
-            total_loss += loss.item() * len(batch_x)
-        epoch_losses.append(total_loss / len(train_dataset))
+    model = model_cls(
+        input_size=len(columns),
+        hidden_size=args.hidden_size,
+        num_layers=args.num_layers,
+        dropout=args.dropout,
+    )
+    train_sequence_regressor(
+        model,
+        train_x,
+        train_y,
+        epochs=args.epochs,
+        learning_rate=args.learning_rate,
+        batch_size=args.batch_size,
+        weight_decay=args.weight_decay,
+        gradient_clip=args.gradient_clip,
+    )
 
     scaled_predictions = recursive_holdout_forecast(
         model,
@@ -211,8 +299,13 @@ def main(model_name: str, model_cls: Callable[[int, int], _TorchSequenceRegresso
             "features": columns,
             "sequence_length": args.sequence_length,
             "epochs": args.epochs,
+            "hidden_size": args.hidden_size,
+            "learning_rate": args.learning_rate,
+            "num_layers": args.num_layers,
+            "dropout": args.dropout,
             "batch_size": args.batch_size,
-            "final_train_loss": epoch_losses[-1],
+            "weight_decay": args.weight_decay,
+            "gradient_clip": args.gradient_clip,
             "model_path": str((MODELS_DIR / f"{model_name}.pt").relative_to(MODELS_DIR.parent)),
         },
     )
