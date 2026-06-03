@@ -1,4 +1,4 @@
-"""Plot one-year holdout overview for all candidate models."""
+"""Plot one-year holdout overview for baseline and tuned sequence candidates."""
 
 from __future__ import annotations
 
@@ -14,14 +14,22 @@ import pandas as pd
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-MODEL_NAMES = ("prophet", "sarima", "gru", "lstm", "prophet_tuned", "openevolve_prophet")
+MODEL_NAMES = ("prophet", "sarima", "gru", "lstm", "gru_tuned", "lstm_tuned")
 MODEL_COLORS = {
     "prophet": "#2563eb",
     "sarima": "#9333ea",
     "gru": "#059669",
     "lstm": "#dc2626",
-    "prophet_tuned": "#f97316",
-    "openevolve_prophet": "#0891b2",
+    "gru_tuned": "#f97316",
+    "lstm_tuned": "#0891b2",
+}
+MODEL_LABELS = {
+    "prophet": "Prophet",
+    "sarima": "SARIMA",
+    "gru": "GRU",
+    "lstm": "LSTM",
+    "gru_tuned": "Tuned GRU",
+    "lstm_tuned": "Tuned LSTM",
 }
 
 
@@ -90,12 +98,12 @@ def plot_overview(traffic: pd.DataFrame, pods: pd.DataFrame, output_path: Path) 
         gridspec_kw={"height_ratios": [2, 1]},
     )
 
-    traffic_ax.plot(traffic.index, traffic["actual"], label="Actual traffic", color="#111827", linewidth=2.2)
+    traffic_ax.plot(traffic.index, traffic["actual"], label="Actual", color="#111827", linewidth=2.2)
     for model in MODEL_NAMES:
         traffic_ax.plot(
             traffic.index,
             traffic[model],
-            label=f"{model.upper()} predicted",
+            label=MODEL_LABELS[model],
             color=MODEL_COLORS[model],
             linewidth=1.4,
             alpha=0.85,
@@ -104,14 +112,13 @@ def plot_overview(traffic: pd.DataFrame, pods: pd.DataFrame, output_path: Path) 
     traffic_ax.set_title("Full holdout traffic overview")
     traffic_ax.set_ylabel("Daily mean request rate")
     traffic_ax.grid(alpha=0.25)
-    traffic_ax.legend(ncol=3, loc="upper right")
 
-    pod_ax.plot(pods.index, pods["actual_pods"], label="Actual pods", color="#111827", linewidth=2.0)
+    pod_ax.plot(pods.index, pods["actual_pods"], label="Actual", color="#111827", linewidth=2.0)
     for model in MODEL_NAMES:
         pod_ax.plot(
             pods.index,
             pods[model],
-            label=f"{model.upper()} predicted pods",
+            label=MODEL_LABELS[model],
             color=MODEL_COLORS[model],
             linewidth=1.3,
             alpha=0.85,
@@ -121,10 +128,11 @@ def plot_overview(traffic: pd.DataFrame, pods: pd.DataFrame, output_path: Path) 
     pod_ax.set_ylabel("Daily mean pods")
     pod_ax.set_xlabel("Holdout date")
     pod_ax.grid(alpha=0.25)
-    pod_ax.legend(ncol=3, loc="upper right")
 
     fig.autofmt_xdate()
-    fig.tight_layout()
+    handles, labels = traffic_ax.get_legend_handles_labels()
+    fig.legend(handles, labels, loc="lower center", bbox_to_anchor=(0.5, 0.01), ncol=7, frameon=False)
+    fig.tight_layout(rect=(0, 0.07, 1, 1))
     output_path.parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(output_path, dpi=160)
     plt.close(fig)

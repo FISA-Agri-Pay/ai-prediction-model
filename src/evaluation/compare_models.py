@@ -13,7 +13,7 @@ import pandas as pd
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 RESULTS_DIR = PROJECT_ROOT / "experiments" / "results"
 PLOTS_DIR = PROJECT_ROOT / "experiments" / "plots"
-MODEL_NAMES = ["prophet", "sarima", "gru", "lstm", "prophet_tuned", "openevolve_prophet"]
+MODEL_NAMES = ["prophet", "sarima", "gru", "lstm", "gru_tuned", "lstm_tuned"]
 METRIC_COLUMNS = [
     "smape",
     "pod_accuracy",
@@ -112,17 +112,18 @@ def plot_comparison(ranked: pd.DataFrame, output_path: Path) -> None:
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    fig, axes = plt.subplots(2, 2, figsize=(11, 7))
+    fig, axes = plt.subplots(2, 2, figsize=(12, 8))
     axes = axes.flatten()
 
     for axis, metric in zip(axes, METRIC_COLUMNS):
-        axis.bar(ranked["model"], ranked[metric])
+        axis.barh(ranked["model"], ranked[metric], color="#2563eb")
         axis.set_title(metric)
-        axis.set_ylim(0, max(1.0, ranked[metric].max() * 1.15))
-        axis.tick_params(axis="x", rotation=20)
+        axis.set_xlim(0, max(1.0, ranked[metric].max() * 1.15))
+        axis.invert_yaxis()
+        axis.grid(axis="x", alpha=0.25)
 
     fig.suptitle("Model Comparison Metrics", fontsize=14)
-    fig.tight_layout()
+    fig.tight_layout(rect=(0, 0, 1, 0.96))
     fig.savefig(output_path, dpi=150)
     plt.close(fig)
 
