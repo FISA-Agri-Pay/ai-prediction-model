@@ -50,9 +50,10 @@ class SequenceTuningTest(unittest.TestCase):
             number = 0
 
         class Study:
-            best_params = {"num_layers": 1}
-            best_trial = BestTrial()
-            best_value = 0.1
+            def __init__(self):
+                self.best_params = {"num_layers": 1}
+                self.best_trial = BestTrial()
+                self.best_value = 0.1
 
             def trials_dataframe(self, attrs):
                 return pd.DataFrame([{"number": 0, "value": 0.1, "state": "COMPLETE"}])
