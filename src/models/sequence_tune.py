@@ -12,10 +12,11 @@ import pandas as pd
 
 from src.evaluation.metrics import evaluate_predictions
 from src.models.common import (
-    FEATURE_COLUMNS,
+    MODEL_FEATURE_COLUMNS,
     MODELS_DIR,
     RESULTS_DIR,
     add_common_args,
+    build_model_feature_frame,
     build_prediction_frame,
     load_traffic_data,
     save_model_outputs,
@@ -48,6 +49,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--model", choices=MODEL_CHOICES, required=True, help="Sequence model to tune.")
     parser.add_argument("--trials", type=int, default=30, help="Number of Optuna trials.")
     parser.add_argument("--n-jobs", type=int, default=1, help="Number of parallel Optuna trials.")
+    parser.add_argument(
+        "--cpu-threads",
+        type=int,
+        default=0,
+        help="Number of CPU threads PyTorch can use per process. 0 keeps the PyTorch default.",
+    )
+    parser.add_argument(
+        "--interop-threads",
+        type=int,
+        default=0,
+        help="Number of PyTorch inter-op CPU threads. 0 keeps the PyTorch default.",
+    )
     parser.add_argument("--seed", type=int, default=42, help="Random seed for Optuna and PyTorch.")
     parser.add_argument(
         "--validation-ratio",
@@ -73,6 +86,10 @@ def parse_args() -> argparse.Namespace:
         parser.error("--trials must be a positive integer.")
     if args.n_jobs <= 0:
         parser.error("--n-jobs must be a positive integer.")
+    if args.cpu_threads < 0:
+        parser.error("--cpu-threads must be non-negative.")
+    if args.interop_threads < 0:
+        parser.error("--interop-threads must be non-negative.")
     if not 0 < args.validation_ratio < 1:
         parser.error("--validation-ratio must be greater than 0 and less than 1.")
     if args.smape_weight < 0:
@@ -81,6 +98,16 @@ def parse_args() -> argparse.Namespace:
         parser.error("--over-provisioning-weight must be non-negative.")
 
     return args
+
+
+def configure_torch_cpu_threads(cpu_threads: int, interop_threads: int) -> None:
+    """Configure PyTorch CPU thread pools when explicit values are provided."""
+    import torch
+
+    if cpu_threads > 0:
+        torch.set_num_threads(cpu_threads)
+    if interop_threads > 0:
+        torch.set_num_interop_threads(interop_threads)
 
 
 def resolve_model_cls(model_name: str):
@@ -143,11 +170,11 @@ def evaluate_sequence_params(
 
     model_cls = resolve_model_cls(model_name)
     params = normalize_params(params)
-    columns = ["y", *FEATURE_COLUMNS]
+    columns = ["y", *MODEL_FEATURE_COLUMNS]
     sequence_length = int(params["sequence_length"])
 
-    train_values = train[columns].to_numpy(dtype=float)
-    forecast_values = forecast_frame[columns].to_numpy(dtype=float)
+    train_values = train[["y"]].join(build_model_feature_frame(train))[columns].to_numpy(dtype=float)
+    forecast_values = forecast_frame[["y"]].join(build_model_feature_frame(forecast_frame))[columns].to_numpy(dtype=float)
     scaled_train, _ = scale_values(train_values)
     train_x, train_y = make_sequences(scaled_train, sequence_length)
 
@@ -249,6 +276,7 @@ def main() -> None:
     import torch
 
     args = parse_args()
+    configure_torch_cpu_threads(args.cpu_threads, args.interop_threads)
     df = load_traffic_data(args.data_path)
     train_full, holdout = split_train_holdout(df, args.holdout_ratio)
     train, validation = split_train_holdout(train_full, args.validation_ratio)
@@ -290,7 +318,7 @@ def main() -> None:
             "train_rows": len(train_full),
             "validation_rows": len(validation),
             "holdout_rows": len(holdout),
-            "features": ["y", *FEATURE_COLUMNS],
+            "features": ["y", *MODEL_FEATURE_COLUMNS],
             "sequence_params": dict(study.best_params),
             "objective_score": autoscaling_objective_score(
                 best_metric_values,

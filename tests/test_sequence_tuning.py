@@ -1,4 +1,7 @@
 import unittest
+from contextlib import redirect_stderr
+from io import StringIO
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -6,6 +9,7 @@ from src.models.sequence_tune import (
     autoscaling_objective_score,
     evaluate_sequence_params,
     normalize_params,
+    parse_args,
     suggest_params,
     tuned_model_name,
 )
@@ -36,6 +40,16 @@ class SequenceTuningTest(unittest.TestCase):
         params = normalize_params({"num_layers": 1})
 
         self.assertEqual(params["dropout"], 0.0)
+
+    def test_parse_args_rejects_negative_cpu_thread_options(self):
+        with redirect_stderr(StringIO()):
+            with patch("sys.argv", ["sequence_tune.py", "--model", "gru", "--cpu-threads", "-1"]):
+                with self.assertRaises(SystemExit):
+                    parse_args()
+
+            with patch("sys.argv", ["sequence_tune.py", "--model", "gru", "--interop-threads", "-1"]):
+                with self.assertRaises(SystemExit):
+                    parse_args()
 
     def test_suggest_params_disables_dropout_for_single_layer_models(self):
         class SingleLayerTrial:
