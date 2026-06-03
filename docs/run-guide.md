@@ -84,7 +84,7 @@ python -m src.models.sequence_tune --model lstm --trials 30
 score = under_provisioning_rate + 0.1 * smape + 0.2 * over_provisioning_rate
 ```
 
-`--trials`는 시도할 Optuna trial 수이고, `--n-jobs`는 동시에 실행할 병렬 trial 수다. CPU 코어가 충분하면 `--cpu-threads`와 함께 조정할 수 있다.
+`--trials`는 시도할 Optuna trial 수다. GRU/LSTM 튜닝은 trial마다 PyTorch 전역 RNG seed를 사용하므로 재현성을 위해 `--n-jobs 1`만 지원한다. CPU 코어가 충분하면 trial 병렬 대신 `--cpu-threads`로 PyTorch CPU thread 수를 조정한다.
 
 예시:
 

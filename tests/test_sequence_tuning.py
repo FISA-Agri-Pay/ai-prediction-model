@@ -75,6 +75,12 @@ class SequenceTuningTest(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     parse_args()
 
+    def test_parse_args_rejects_parallel_optuna_jobs(self):
+        with redirect_stderr(StringIO()):
+            with patch("sys.argv", ["sequence_tune.py", "--model", "gru", "--n-jobs", "2"]):
+                with self.assertRaises(SystemExit):
+                    parse_args()
+
     def test_suggest_params_disables_dropout_for_single_layer_models(self):
         class SingleLayerTrial:
             def suggest_int(self, name, low, high):

@@ -48,7 +48,12 @@ def parse_args() -> argparse.Namespace:
     add_common_args(parser)
     parser.add_argument("--model", choices=MODEL_CHOICES, required=True, help="Sequence model to tune.")
     parser.add_argument("--trials", type=int, default=30, help="Number of Optuna trials.")
-    parser.add_argument("--n-jobs", type=int, default=1, help="Number of parallel Optuna trials.")
+    parser.add_argument(
+        "--n-jobs",
+        type=int,
+        default=1,
+        help="Number of parallel Optuna trials. Only 1 is supported for deterministic seeded tuning.",
+    )
     parser.add_argument(
         "--cpu-threads",
         type=int,
@@ -86,6 +91,8 @@ def parse_args() -> argparse.Namespace:
         parser.error("--trials must be a positive integer.")
     if args.n_jobs <= 0:
         parser.error("--n-jobs must be a positive integer.")
+    if args.n_jobs != 1:
+        parser.error("--n-jobs must be 1 because seeded PyTorch trials share process-wide RNG state.")
     if args.cpu_threads < 0:
         parser.error("--cpu-threads must be non-negative.")
     if args.interop_threads < 0:
