@@ -1,6 +1,9 @@
+import json
 import unittest
 from contextlib import redirect_stderr
 from io import StringIO
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 import pandas as pd
@@ -12,6 +15,7 @@ from src.models.sequence_tune import (
     parse_args,
     suggest_params,
     tuned_model_name,
+    write_tuning_outputs,
 )
 
 try:
@@ -38,6 +42,26 @@ class SequenceTuningTest(unittest.TestCase):
 
     def test_normalize_params_adds_default_dropout_when_absent(self):
         params = normalize_params({"num_layers": 1})
+
+        self.assertEqual(params["dropout"], 0.0)
+
+    def test_write_tuning_outputs_persists_normalized_best_params(self):
+        class BestTrial:
+            number = 0
+
+        class Study:
+            best_params = {"num_layers": 1}
+            best_trial = BestTrial()
+            best_value = 0.1
+
+            def trials_dataframe(self, attrs):
+                return pd.DataFrame([{"number": 0, "value": 0.1, "state": "COMPLETE"}])
+
+        with TemporaryDirectory() as temp_dir:
+            with patch("src.models.sequence_tune.RESULTS_DIR", Path(temp_dir)):
+                write_tuning_outputs("gru", Study(), {})
+                with (Path(temp_dir) / "gru_best_params.json").open("r", encoding="utf-8") as file:
+                    params = json.load(file)
 
         self.assertEqual(params["dropout"], 0.0)
 

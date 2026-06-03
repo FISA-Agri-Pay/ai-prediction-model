@@ -132,13 +132,19 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Compare model metric JSON files.")
     parser.add_argument("--results-dir", type=Path, default=RESULTS_DIR)
     parser.add_argument("--plots-dir", type=Path, default=PLOTS_DIR)
+    parser.add_argument(
+        "--models",
+        nargs="+",
+        default=MODEL_NAMES,
+        help="Metric model names to compare. Defaults to the full final comparison set.",
+    )
     return parser.parse_args()
 
 
 def main() -> None:
     args = parse_args()
     try:
-        metrics = load_model_metrics(args.results_dir)
+        metrics = load_model_metrics(args.results_dir, args.models)
         ranked = rank_models(metrics)
         ensure_ranked_not_empty(ranked)
         outputs = write_comparison_outputs(ranked, args.results_dir, args.plots_dir)

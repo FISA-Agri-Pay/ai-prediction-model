@@ -248,6 +248,7 @@ def write_tuning_outputs(model_name: str, study: "optuna.Study", best_metrics: d
     trials_path = RESULTS_DIR / f"{model_name}_tuning_trials.csv"
     best_params_path = RESULTS_DIR / f"{model_name}_best_params.json"
     summary_path = RESULTS_DIR / f"{model_name}_tuning_summary.json"
+    best_params = normalize_params(study.best_params)
 
     study.trials_dataframe(attrs=("number", "value", "params", "user_attrs", "state")).to_csv(
         trials_path,
@@ -255,7 +256,7 @@ def write_tuning_outputs(model_name: str, study: "optuna.Study", best_metrics: d
     )
 
     with best_params_path.open("w", encoding="utf-8") as file:
-        json.dump(dict(study.best_params), file, indent=2, ensure_ascii=False)
+        json.dump(best_params, file, indent=2, ensure_ascii=False)
 
     summary = {
         "model": model_name,
@@ -297,11 +298,12 @@ def main() -> None:
         catch=(Exception,),
     )
 
+    best_params = normalize_params(study.best_params)
     best_predictions, best_metric_values, best_model = evaluate_sequence_params(
         args.model,
         train_full,
         holdout,
-        study.best_params,
+        best_params,
         args.seed,
     )
 
@@ -319,7 +321,7 @@ def main() -> None:
             "validation_rows": len(validation),
             "holdout_rows": len(holdout),
             "features": ["y", *MODEL_FEATURE_COLUMNS],
-            "sequence_params": dict(study.best_params),
+            "sequence_params": best_params,
             "objective_score": autoscaling_objective_score(
                 best_metric_values,
                 args.smape_weight,

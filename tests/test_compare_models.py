@@ -36,6 +36,16 @@ class CompareModelsTest(unittest.TestCase):
             with self.assertRaisesRegex(FileNotFoundError, "Missing model metric files"):
                 load_model_metrics(Path(temp_dir))
 
+    def test_load_model_metrics_accepts_explicit_model_subset(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            self.write_metric(temp_path, "prophet")
+            self.write_metric(temp_path, "gru", under_provisioning_rate=0.05)
+
+            metrics = load_model_metrics(temp_path, ["prophet", "gru"])
+
+            self.assertEqual(metrics["model"].tolist(), ["prophet", "gru"])
+
     def test_rank_models_prioritizes_under_provisioning(self):
         metrics = pd.DataFrame(
             [

@@ -56,7 +56,7 @@ python -m src.models.lstm.train
 ## 모델 비교
 
 ```bash
-python -m src.evaluation.compare_models
+python -m src.evaluation.compare_models --models prophet sarima gru lstm
 ```
 
 비교 결과 저장 위치:
@@ -64,6 +64,12 @@ python -m src.evaluation.compare_models
 - `experiments/results/comparison_results.csv`
 - `experiments/results/best_model.json`
 - `experiments/plots/model_comparison.png`
+
+GRU/LSTM 튜닝까지 끝난 뒤 최종 비교를 다시 생성할 때는 기본 전체 비교 대상을 사용한다.
+
+```bash
+python -m src.evaluation.compare_models
+```
 
 ## GRU/LSTM 하이퍼파라미터 튜닝
 
