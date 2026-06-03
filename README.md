@@ -165,10 +165,10 @@ Synthetic traffic data는 기존 `prophet-autoscaler`의 더미 데이터 생성
 5. request rate를 모델의 예측 target인 `y`로 사용한다.
 6. calendar feature인 `hour`, `day_of_week`, `month`를 추가한다.
 
-최종적으로 `traffic.csv`에 저장되는 기본 컬럼은 다음과 같다.
+최종적으로 `traffic.csv`에 저장되는 컬럼은 다음과 같다.
 
 ```text
-ds, y, is_monsoon, typhoon_index, hour, day_of_week, month
+ds, is_monsoon, typhoon_index, request_rate, cpu_utilization, hour, day_of_week, month, y
 ```
 
 ### 모델 학습 전처리
