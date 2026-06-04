@@ -9,20 +9,57 @@
 - Holdout 기간: 마지막 약 1년
 - Primary metric: Under-provisioning rate
 
-## 모델 비교 결과
+Autoscaling에서는 pod 부족이 서비스 지연이나 장애로 이어질 수 있으므로, 최종 선정은 under-provisioning rate를 가장 우선한다.
+
+## 선정 흐름
+
+이번 실험은 두 단계로 진행했다.
+
+1. Prophet, SARIMA, GRU, LSTM 4개 후보 모델을 동일한 holdout 조건에서 1차 비교한다.
+2. 1차 비교에서 sequence model인 GRU와 LSTM의 성능이 좋아 두 모델만 Optuna로 튜닝한다.
+3. 기본 GRU/LSTM과 Tuned GRU/Tuned LSTM을 2차 비교해 최종 모델을 선정한다.
+
+## 1차 모델 비교: 튜닝 대상 선정
 
 | Rank | 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate | 비고 |
 | ---: | --- | ---: | ---: | ---: | ---: | --- |
-| 1 | Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 | 최종 선정 |
-| 2 | GRU | 0.7730 | 0.4829 | 0.1840 | 0.3331 | sequence model |
-| 3 | LSTM | 0.7652 | 0.5250 | 0.2083 | 0.2667 | sequence model |
-| 4 | SARIMA | 1.8726 | 0.5895 | 0.4105 | 0.0000 | statistical baseline |
+| 1 | GRU | 0.4064 | 0.8442 | 0.0426 | 0.1131 | 튜닝 대상 선정 |
+| 2 | LSTM | 0.3931 | 0.8806 | 0.0555 | 0.0639 | 튜닝 대상 선정 |
+| 3 | Prophet | 0.6368 | 0.6832 | 0.1268 | 0.1900 | baseline |
+| 4 | SARIMA | 0.8197 | 0.6083 | 0.3762 | 0.0155 | statistical baseline |
 
-1차 모델 비교에서는 Prophet이 under-provisioning rate, SMAPE, pod accuracy 기준에서 가장 안정적인 결과를 보여 최종 후보 모델로 선정되었다.
+GRU와 LSTM은 Prophet, SARIMA보다 under-provisioning rate와 pod accuracy 측면에서 더 좋은 결과를 보였다. 따라서 2차 실험에서는 GRU와 LSTM만 Optuna 튜닝 대상으로 선정했다.
 
-## 모델 비교 그래프
+![Baseline model comparison](assets/baseline_model_comparison.png)
+
+## 2차 모델 비교: 튜닝 전후 비교
+
+| Rank | 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate | 비고 |
+| ---: | --- | ---: | ---: | ---: | ---: | --- |
+| 1 | GRU | 0.4064 | 0.8442 | 0.0426 | 0.1131 | 기본 모델 |
+| 2 | LSTM | 0.3931 | 0.8806 | 0.0555 | 0.0639 | 기본 모델 |
+| 3 | Tuned LSTM | 0.3835 | 0.8819 | 0.0666 | 0.0515 | Optuna tuning |
+| 4 | Tuned GRU | 0.4117 | 0.8432 | 0.0667 | 0.0901 | Optuna tuning |
+
+Tuned LSTM은 SMAPE, pod accuracy, over-provisioning rate를 개선했고 Tuned GRU도 over-provisioning rate를 낮췄다. 그러나 최종 holdout의 primary metric인 under-provisioning rate는 기본 GRU/LSTM보다 높아졌다.
+
+![Sequence tuning metric comparison](assets/sequence_tuning_metric_comparison.png)
+
+## 전체 모델 비교
+
+2차 비교 이후 전체 결과를 다시 정렬하면 기본 GRU가 가장 낮은 under-provisioning rate를 유지한다.
 
 ![Model comparison](assets/model_comparison.png)
+
+## Holdout 상세 비교
+
+![GRU holdout comparison](assets/gru_holdout_comparison.png)
+
+![Tuned GRU holdout comparison](assets/gru_tuned_holdout_comparison.png)
+
+![LSTM holdout comparison](assets/lstm_holdout_comparison.png)
+
+![Tuned LSTM holdout comparison](assets/lstm_tuned_holdout_comparison.png)
 
 ## 전체 Holdout Overview
 
@@ -30,83 +67,22 @@
 
 위 그래프는 전체 holdout 약 1년을 일 단위 평균으로 압축해 실제 트래픽/예측 트래픽과 실제 pod/예측 pod 흐름을 비교한 것이다. 장기 추세와 계절성 추종 여부를 확인하기 위한 보조 자료로 사용한다.
 
-## Prophet holdout 상세 비교
-
-![Prophet holdout comparison](assets/prophet_holdout_comparison.png)
-
-위 그래프는 Prophet의 holdout 예측 결과에서 실제 트래픽 평균이 가장 높은 30일 구간을 자동 선택한 것이다. 상단은 실제 트래픽과 예측 트래픽을 비교하고, 하단은 실제 필요 pod 수와 예측 pod 수를 비교한다.
-
-붉은 음영은 예측 pod 수가 실제 필요 pod 수보다 적은 under-provisioning 구간이고, 파란 음영은 예측 pod 수가 실제 필요 pod 수보다 많은 over-provisioning 구간이다. 최종 모델 선정에서는 전체 holdout metric을 우선 사용하되, 이 그래프를 통해 pod 부족이 발생하는 시점과 예측 패턴을 함께 검토한다.
-
-## 선정 기준
-
-최종 모델은 다음 순서로 선정했다.
-
-1. Under-provisioning rate 낮은 모델
-2. SMAPE 낮은 모델
-3. Pod accuracy 높은 모델
-4. Over-provisioning rate 낮은 모델
-
 ## 최종 선정 모델
 
 ```text
-Prophet
+GRU
 ```
 
 ## 선정 근거
 
-Prophet은 under-provisioning rate가 `0.1268`로 가장 낮았다. Autoscaling 환경에서는 pod 부족이 서비스 지연이나 장애로 이어질 수 있으므로, under-provisioning rate를 primary metric으로 두었고 이 기준에서 Prophet이 가장 안정적이었다.
+GRU는 최종 비교에서 under-provisioning rate가 `0.0426`으로 가장 낮았다. 이는 실제 필요한 pod 수보다 적게 예측할 위험이 가장 작다는 의미이므로, Kubernetes predictive autoscaling의 서비스 안정성 기준에 가장 잘 맞는다.
 
-또한 Prophet은 pod accuracy도 `0.6834`로 후보 모델 중 가장 높았다. SMAPE 역시 `0.6369`로 가장 낮아, traffic value 예측과 pod decision 측면 모두에서 가장 균형이 좋았다.
+LSTM과 Tuned LSTM은 SMAPE와 pod accuracy가 GRU보다 좋지만, primary metric인 under-provisioning rate는 GRU보다 높다. Tuned GRU/Tuned LSTM은 일부 보조 지표를 개선했지만, 최종 holdout에서 pod 부족 위험을 기본 GRU보다 낮추지는 못했다.
 
-GRU와 LSTM은 sequence model로서 비선형 패턴을 학습할 가능성이 있지만, 이번 기본 설정에서는 under-provisioning rate와 pod accuracy 모두 Prophet보다 낮았다. SARIMA는 over-provisioning rate가 0으로 추가 pod 비용은 적지만, under-provisioning rate가 높아 autoscaling 안정성 기준에서는 적합하지 않았다.
+따라서 이번 실험의 최종 사용 모델은 기본 GRU로 선정한다.
 
 ## 한계 및 후속 개선
 
-- GRU/LSTM은 기본 hyperparameter로만 실행했으므로 튜닝 여지가 있다.
-- SARIMA는 5년 hourly 데이터에서 학습 비용이 높고, order 후보 탐색이 필요하다.
-- 이번 결과는 synthetic data 기준이므로 실제 운영 metric으로 재검증해야 한다.
-- Prophet은 최종 선정 모델이므로 Optuna 기반 하이퍼파라미터 튜닝을 통해 under-provisioning rate 중심의 추가 최적화를 수행했다.
-
-## Prophet 튜닝 방법
-
-Prophet 튜닝은 모델 선정 이후의 후속 최적화 단계로 둔다. 1차 모델 비교에서 선정된 Prophet만 대상으로 삼아 autoscaling metric을 개선한다.
-
-## Prophet 튜닝 결과
-
-| 모델 | SMAPE | Pod accuracy | Under-provisioning rate | Over-provisioning rate | 비고 |
-| --- | ---: | ---: | ---: | ---: | --- |
-| Prophet | 0.6369 | 0.6834 | 0.1268 | 0.1899 | 기본 설정 |
-| Tuned Prophet | 0.6338 | 0.6796 | 0.1238 | 0.1966 | Optuna tuning |
-
-Tuned Prophet은 `30` trials 기준 Optuna 튜닝 결과에서 under-provisioning rate를 `0.1268`에서 `0.1238`로 낮췄고, SMAPE도 `0.6369`에서 `0.6338`로 소폭 개선했다. 다만 pod accuracy는 `0.6834`에서 `0.6796`으로 낮아졌고, over-provisioning rate는 `0.1899`에서 `0.1966`으로 증가했다. 따라서 튜닝 결과는 서비스 안정성 지표를 소폭 개선한 대신 비용 측면의 trade-off가 생긴 것으로 해석한다.
-
-## Tuned Prophet holdout 상세 비교
-
-![Tuned Prophet holdout comparison](assets/prophet_tuned_holdout_comparison.png)
-
-위 그래프는 튜닝된 Prophet의 같은 고트래픽 30일 구간 예측 결과다. 기본 Prophet 그래프와 함께 비교해 튜닝 이후 under-provisioning과 over-provisioning 구간이 어떻게 달라지는지 확인한다.
-
-튜닝 대상 파라미터:
-
-- `changepoint_prior_scale`
-- `seasonality_prior_scale`
-- `holidays_prior_scale`
-- `changepoint_range`
-- `seasonality_mode`
-
-Objective score:
-
-```text
-score = under_provisioning_rate + 0.1 * smape + 0.2 * over_provisioning_rate
-```
-
-이 score는 under-provisioning rate를 가장 중요하게 두되, 예측값을 과하게 높여 over-provisioning을 늘리는 방향으로만 최적화되지 않도록 SMAPE와 over-provisioning rate를 보조 penalty로 사용한다.
-
-튜닝 결과는 다음 파일에 저장한다.
-
-- `experiments/results/prophet_tuning_trials.csv`
-- `experiments/results/prophet_best_params.json`
-- `experiments/results/prophet_tuning_summary.json`
-- `experiments/results/prophet_tuned_metrics.json`
-- `data/predictions/prophet_tuned_predictions.csv`
+- 튜닝 objective가 validation split에서는 낮은 score를 찾았지만 holdout의 pod 부족 위험을 충분히 낮추지 못했다.
+- 향후에는 walk-forward validation 또는 여러 holdout window를 사용해 튜닝 일반화 성능을 재검증할 수 있다.
+- 이번 결과는 synthetic data 기준이므로 실제 운영 traffic과 HPA metric으로 재검증해야 한다.

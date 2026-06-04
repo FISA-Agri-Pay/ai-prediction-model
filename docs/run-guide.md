@@ -1,6 +1,6 @@
 # 실행 가이드
 
-이 문서는 데이터 생성, 모델 학습, 튜닝, OpenEvolve 실행, 시각화 생성 절차를 정리한다. 프로젝트 개요와 최종 결론은 [README](../README.md)를 참고한다.
+이 문서는 데이터 생성, 모델 학습, GRU/LSTM 튜닝, 시각화 생성 절차를 정리한다. 프로젝트 개요와 최종 결론은 [README](../README.md)를 참고한다.
 
 ## PowerShell 인코딩 설정
 
@@ -56,7 +56,7 @@ python -m src.models.lstm.train
 ## 모델 비교
 
 ```bash
-python -m src.evaluation.compare_models
+python -m src.evaluation.compare_models --models prophet sarima gru lstm
 ```
 
 비교 결과 저장 위치:
@@ -65,69 +65,52 @@ python -m src.evaluation.compare_models
 - `experiments/results/best_model.json`
 - `experiments/plots/model_comparison.png`
 
-## Prophet 하이퍼파라미터 튜닝
+GRU/LSTM 튜닝까지 끝난 뒤 최종 비교를 다시 생성할 때는 기본 전체 비교 대상을 사용한다.
 
 ```bash
-python -m src.models.prophet.tune --trials 30 --n-jobs 2
+python -m src.evaluation.compare_models
 ```
 
-튜닝은 Optuna로 수행하며, objective score는 under-provisioning rate를 중심으로 SMAPE와 over-provisioning rate를 보조 penalty로 반영한다.
+## GRU/LSTM 하이퍼파라미터 튜닝
+
+```bash
+python -m src.models.sequence_tune --model gru --trials 30
+python -m src.models.sequence_tune --model lstm --trials 30
+```
+
+1차 모델 비교에서 선정된 GRU와 LSTM만 Optuna로 튜닝한다. objective score는 under-provisioning rate를 중심으로 SMAPE와 over-provisioning rate를 보조 penalty로 반영한다.
 
 ```text
 score = under_provisioning_rate + 0.1 * smape + 0.2 * over_provisioning_rate
 ```
 
-`--n-jobs`는 병렬 trial 수다. Prophet은 trial마다 CPU를 많이 사용하므로 로컬 환경에서는 `2`부터 확인하는 것을 권장한다.
+`--trials`는 시도할 Optuna trial 수다. GRU/LSTM 튜닝은 trial마다 PyTorch 전역 RNG seed를 사용하므로 재현성을 위해 `--n-jobs 1`만 지원한다. CPU 코어가 충분하면 trial 병렬 대신 `--cpu-threads`로 PyTorch CPU thread 수를 조정한다.
+
+예시:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.models.sequence_tune --model lstm --trials 30 --n-jobs 1 --cpu-threads 6
+```
 
 튜닝 결과 저장 위치:
 
-- `experiments/results/prophet_tuning_trials.csv`
-- `experiments/results/prophet_best_params.json`
-- `experiments/results/prophet_tuning_summary.json`
-- `experiments/results/prophet_tuned_metrics.json`
-- `data/predictions/prophet_tuned_predictions.csv`
+- `experiments/results/{model}_tuning_trials.csv`
+- `experiments/results/{model}_best_params.json`
+- `experiments/results/{model}_tuning_summary.json`
+- `experiments/results/{model}_tuned_metrics.json`
+- `data/predictions/{model}_tuned_predictions.csv`
 
-저장된 best params로 기본 학습 스크립트를 다시 실행할 수도 있다.
-
-```bash
-python -m src.models.prophet.train --params-path experiments/results/prophet_best_params.json
-```
-
-## OpenEvolve 기반 Prophet 최적화
-
-OpenEvolve 관련 파일:
-
-- `experiments/openevolve/prophet_model/initial_program.py`
-- `experiments/openevolve/prophet_model/evaluator.py`
-- `experiments/openevolve/prophet_model/config.yaml`
-- `experiments/openevolve/prophet_model/README.md`
-
-상세한 LLM endpoint 설정과 row-limit 설정은 [OpenEvolve Prophet README](../experiments/openevolve/prophet_model/README.md)를 참고한다.
-
-OpenEvolve 실행 예시:
-
-```bash
-python openevolve-run.py experiments/openevolve/prophet_model/initial_program.py experiments/openevolve/prophet_model/evaluator.py --config experiments/openevolve/prophet_model/config.yaml --iterations 40
-```
-
-선정된 OpenEvolve Prophet recipe 실행:
-
-```bash
-python -m src.models.prophet.openevolve_train
-```
-
-출력 파일:
-
-- `data/predictions/openevolve_prophet_predictions.csv`
-- `experiments/results/openevolve_prophet_metrics.json`
+`{model}`에는 `gru` 또는 `lstm`이 들어간다.
 
 ## Holdout 시각화
 
 ```bash
 python -m src.evaluation.plot_holdout_overview
-python -m src.evaluation.plot_holdout_comparison --model prophet
-python -m src.evaluation.plot_holdout_comparison --model prophet_tuned
-python -m src.evaluation.plot_holdout_comparison --model openevolve_prophet
+python -m src.evaluation.plot_sequence_tuning_comparison
+python -m src.evaluation.plot_holdout_comparison --model gru
+python -m src.evaluation.plot_holdout_comparison --model gru_tuned
+python -m src.evaluation.plot_holdout_comparison --model lstm
+python -m src.evaluation.plot_holdout_comparison --model lstm_tuned
 ```
 
 문서용 시각화 자료는 `docs/assets/`에 저장된다. 1년 overview는 전체 holdout 추세를 확인하기 위한 그래프이고, 30일 상세 그래프는 고트래픽 구간의 autoscaling decision을 확인하기 위한 그래프다.
