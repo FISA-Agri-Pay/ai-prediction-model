@@ -114,3 +114,23 @@ python -m src.evaluation.plot_holdout_comparison --model lstm_tuned
 ```
 
 문서용 시각화 자료는 `docs/assets/`에 저장된다. 1년 overview는 전체 holdout 추세를 확인하기 위한 그래프이고, 30일 상세 그래프는 고트래픽 구간의 autoscaling decision을 확인하기 위한 그래프다.
+
+## 후속 실험: 서비스별 Predictive Autoscaling
+
+### On-prem BNPL
+
+```powershell
+.\.venv\Scripts\python.exe -m src.data.generate_service_dummy_data
+.\.venv\Scripts\python.exe -m src.models.gru.train_service
+.\.venv\Scripts\python.exe -m src.evaluation.plot_service_autoscaling
+```
+
+빠른 smoke 실행:
+
+```powershell
+.\.venv\Scripts\python.exe -m src.data.generate_service_dummy_data --start 2024-01-01 --end "2024-03-31 23:00"
+.\.venv\Scripts\python.exe -m src.models.gru.train_service --epochs 3 --sequence-length 12
+.\.venv\Scripts\python.exe -m src.evaluation.plot_service_autoscaling
+```
+
+결과는 `experiments/service_autoscaling/onprem_bnpl/results/`와 `docs/assets/onprem_bnpl_*.png`에 저장된다.
