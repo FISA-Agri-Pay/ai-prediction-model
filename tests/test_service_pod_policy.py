@@ -63,7 +63,7 @@ class ServicePodPolicyTest(unittest.TestCase):
 
         result = build_aws_scaling_decisions(predictions)
 
-        self.assertEqual(result.loc[0, "node_pool"], "on-demand-critical")
+        self.assertEqual(result.loc[0, "node_pool"], DEFAULT_SERVICE_POLICIES["payment"].node_pool)
         self.assertGreaterEqual(result.loc[0, "required_nodes"], 1)
 
 

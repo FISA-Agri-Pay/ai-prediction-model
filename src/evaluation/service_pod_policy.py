@@ -39,11 +39,11 @@ class ServicePodPolicy:
 
 
 DEFAULT_SERVICE_POLICIES: dict[str, ServicePodPolicy] = {
-    "payment": ServicePodPolicy(25.0, 0.25, 3, 12, 1, "on-demand-critical", 18),
-    "auth": ServicePodPolicy(35.0, 0.20, 2, 8, 2, "on-demand-critical", 18),
-    "limit_scoring": ServicePodPolicy(15.0, 0.25, 2, 9, 2, "compute-optimized", 14),
-    "batch": ServicePodPolicy(18.0, 0.15, 1, 7, 4, "spot-batch", 16),
-    "admin": ServicePodPolicy(40.0, 0.10, 1, 3, 5, "general", 20),
+    "payment": ServicePodPolicy(25.0, 0.25, 3, 12, 1, "onprem-critical", 18),
+    "auth": ServicePodPolicy(35.0, 0.20, 2, 8, 2, "onprem-critical", 18),
+    "limit_scoring": ServicePodPolicy(15.0, 0.25, 2, 9, 2, "onprem-compute", 14),
+    "batch": ServicePodPolicy(18.0, 0.15, 1, 7, 4, "onprem-batch", 16),
+    "admin": ServicePodPolicy(40.0, 0.10, 1, 3, 5, "onprem-general", 20),
 }
 
 
@@ -141,8 +141,8 @@ def _allocate_timestamp(
         desired,
         key=lambda service: (
             raw_shares[service] - np.floor(raw_shares[service]),
-            -extra_demand[service],
-            -1 / policies[service].priority,
+            extra_demand[service],
+            1 / policies[service].priority,
         ),
         reverse=True,
     )
