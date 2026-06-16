@@ -58,7 +58,6 @@ data/processed/traffic.csv
 최종 모델: 기본 GRU
 ```
 
-실험 결과와 시각화 파일은 `experiments/results/`, `experiments/plots/`, `docs/assets/`에 저장된다.
 
 ## 문제 정의
 
