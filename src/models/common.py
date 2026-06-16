@@ -46,7 +46,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
 def load_traffic_data(path: Path = DATA_PATH) -> pd.DataFrame:
     if not path.exists():
         raise FileNotFoundError(
-            f"{path} does not exist. Run `python src/data/generate_dummy_data.py` first."
+            f"{path} does not exist. Run `python -m src.data.generate_dummy_data` first."
         )
 
     df = pd.read_csv(path, parse_dates=[TIMESTAMP_COLUMN])
