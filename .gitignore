@@ -1,30 +1,33 @@
-# Python
+# Python cache/build output
 __pycache__/
 *.py[cod]
 *.egg-info/
-.venv/
-venv/
 dist/
 build/
 
-# 환경변수 / 시크릿
+# Local environments
+.venv/
+venv/
+
+# Environment variables / secrets
 .env
 .env.*
 *.key
 secrets/
 
-# 데이터
+# Generated data
 /data/raw/*
 /data/processed/*
 /data/predictions/*
 *.parquet
 *.json.gz
 
-# 실험 산출물
+# Experiment outputs
 /experiments/results/*
 /experiments/plots/*
+/experiments/service_autoscaling/**/results/*
 
-# 모델 파일
+# Model artifacts
 /models/*
 *.pkl
 *.joblib
@@ -32,7 +35,7 @@ secrets/
 *.pt
 *.pth
 
-# keep directory structure
+# Keep generated-output directory structure
 !/data/**/.gitkeep
 !/experiments/**/.gitkeep
 !/models/.gitkeep
@@ -44,13 +47,14 @@ mlartifacts/
 # Jupyter
 .ipynb_checkpoints/
 
-# 로그
+# Logs
 logs/
 *.log
 
-# OpenEvolve run artifacts
+# OpenEvolve local run artifacts
 /experiments/openevolve/**/checkpoints/
 /experiments/openevolve/**/output/
+/experiments/openevolve/**/openevolve_output*/
 /experiments/openevolve/**/logs/
 /experiments/openevolve/**/database/
 /experiments/openevolve/**/artifacts/
