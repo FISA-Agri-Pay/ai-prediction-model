@@ -19,25 +19,20 @@
 1. [프로젝트 목적](#purpose)
 2. [전체 파이프라인](#pipeline)
 3. [문제 정의](#problem)
-4. [후보 모델](#candidates)
-5. [데이터 생성 방식](#data-generation)
-6. [전처리 방식](#preprocessing)
-7. [평가 기준](#evaluation)
-8. [1차 모델 비교: 튜닝 대상 선정](#comparison-1)
-9. [최적화 방식](#optimization)
-10. [2차 모델 비교: 튜닝 전후 비교](#comparison-2)
-11. [Troubleshooting](#troubleshooting)
-12. [최종 사용 모델](#final-model)
-13. [기술 스택](#tech-stack)
-14. [디렉터리 구조](#directory)
-15. [참고 문서](#docs)
-16. [관련 레포지토리](#repositories)
+4. [실험 설계](#setup)
+5. [실험 결과](#results)
+6. [최종 사용 모델](#final-model)
+7. [Troubleshooting](#troubleshooting)
+8. [기술 스택](#tech-stack)
+9. [디렉터리 구조](#directory)
+10. [참고 문서](#docs)
+11. [관련 레포지토리](#repositories)
 
 ---
 
 <a id="purpose"></a>
 
-## 🎯 프로젝트 목적
+## 🎯 1. 프로젝트 목적
 
 Reactive autoscaling은 트래픽 증가가 발생한 뒤 pod 수를 조정합니다. 급격한 트래픽 증가가 발생하면 HPA가 반응하기 전까지 지연이 생기고, 이 구간에서 서비스 응답 지연이나 장애가 발생할 수 있습니다.
 
@@ -49,7 +44,7 @@ Reactive autoscaling은 트래픽 증가가 발생한 뒤 pod 수를 조정합�
 
 <a id="pipeline"></a>
 
-## 🔁 전체 파이프라인
+## 🔁 2. 전체 파이프라인
 
 ```text
 Synthetic agriculture traffic data
@@ -81,7 +76,7 @@ data/processed/traffic.csv
 
 <a id="problem"></a>
 
-## ❓ 문제 정의
+## ❓ 3. 문제 정의
 
 - 입력: 시간별 트래픽 데이터와 weather/calendar feature
 - 출력: holdout 구간의 트래픽 예측값과 required pod 수
@@ -92,9 +87,16 @@ data/processed/traffic.csv
 
 ---
 
-<a id="candidates"></a>
+<a id="setup"></a>
 
-## 🧪 후보 모델
+## 🧭 4. 실험 설계
+
+후보 모델, 데이터 생성 방식, 전처리 방식, 평가 기준을 정리합니다.
+
+<a id="candidates"></a>
+<details>
+<summary><strong>🧪 4-1. 후보 모델</strong></summary>
+<br>
 
 | 모델 | 역할 |
 | --- | --- |
@@ -105,11 +107,14 @@ data/processed/traffic.csv
 
 1차 비교에서는 네 모델을 모두 평가하고, autoscaling 지표가 우수한 GRU와 LSTM만 2차 튜닝 대상으로 선정했습니다.
 
----
+모델별 입력 feature는 [`docs/experiment-design.md`](docs/experiment-design.md)를 참고합니다.
+
+</details>
 
 <a id="data-generation"></a>
-
-## 🌱 데이터 생성 방식
+<details>
+<summary><strong>🌱 4-2. 데이터 생성 방식</strong></summary>
+<br>
 
 Synthetic traffic data는 농자재 BNPL 서비스의 계절적 수요를 반영하도록 생성했습니다. 주요 작물은 벼, 고추, 콩, 마늘, 양파로 두고, 파종/정식, 생육 관리, 수확, 상환 조회 시기를 트래픽 패턴에 반영합니다.
 
@@ -127,25 +132,27 @@ Synthetic traffic data는 농자재 BNPL 서비스의 계절적 수요를 반영
 | `typhoon_index` | 태풍 영향 지수 |
 | `hour`, `day_of_week`, `month` | calendar features |
 
-데이터 생성 상세는 [`docs/experiment-design.md`](docs/experiment-design.md)를 참고합니다.
+작물별 월별 활동도, 요일/시간대 패턴, 장마/태풍, 이상 이벤트 계산식 등 생성 로직 상세는 [`docs/experiment-design.md`](docs/experiment-design.md)의 "트래픽 생성 로직"을 참고합니다.
 
----
+</details>
 
 <a id="preprocessing"></a>
-
-## ⚙️ 전처리 방식
+<details>
+<summary><strong>⚙️ 4-3.전처리 방식</strong></summary>
+<br>
 
 모든 모델은 `data/processed/traffic.csv`를 기준으로 학습합니다. 학습 전에는 모델 입력 형태에 맞춰 timestamp 정렬, target 컬럼 정리, weather/calendar feature 구성, sequence window 생성 등을 수행합니다.
 
 SARIMA와 GRU/LSTM은 `hour`, `day_of_week`, `month`를 순환 feature로 변환해 사용합니다. GRU와 LSTM은 추가로 train 구간 기준 scaling parameter를 계산하고, 과거 window를 입력으로 만들어 다음 시점의 `y`를 예측합니다.
 
-전처리 상세와 feature 구성은 [`docs/experiment-design.md`](docs/experiment-design.md)를 참고합니다.
+cyclic encoding을 도입하게 된 배경과 전후 성능 비교는 [`docs/experiment-notes.md`](docs/experiment-notes.md)를 참고합니다.
 
----
+</details>
 
 <a id="evaluation"></a>
-
-## 📏 평가 기준
+<details>
+<summary><strong>📏 4-4.평가 기준</strong></summary>
+<br>
 
 모델 비교는 timestamp 기준 chronological split으로 진행합니다.
 
@@ -178,11 +185,20 @@ Autoscaling에서는 pod 부족이 서비스 장애로 이어질 수 있으므�
 
 자세한 기준은 [`docs/model-selection-criteria.md`](docs/model-selection-criteria.md)를 참고합니다.
 
+</details>
+
 ---
 
-<a id="comparison-1"></a>
+<a id="results"></a>
 
-## 📊 1차 모델 비교: 튜닝 대상 선정
+## 🏁 5. 실험 결과
+
+1차 모델 비교, 최적화, 2차 모델 비교 결과를 정리합니다.
+
+<a id="comparison-1"></a>
+<details>
+<summary><strong>📊 5-1. 1차 모델 비교: 튜닝 대상 선정</strong></summary>
+<br>
 
 5년치 synthetic data 기준으로 Prophet, SARIMA, GRU, LSTM을 동일한 holdout 조건에서 비교했습니다. 이 단계의 목적은 최종 모델을 바로 확정하는 것이 아니라, Optuna로 추가 최적화할 sequence model 후보를 선정하는 것입니다.
 
@@ -197,11 +213,14 @@ GRU와 LSTM은 Prophet, SARIMA보다 under-provisioning rate와 pod accuracy 측
 
 ![Baseline model comparison](docs/assets/baseline_model_comparison.png)
 
----
+동일한 표는 [`docs/final-decision.md`](docs/final-decision.md)의 "1차 모델 비교" 절에도 있습니다.
+
+</details>
 
 <a id="optimization"></a>
-
-## 🔧 최적화 방식
+<details>
+<summary><strong>🔧 5-2. 최적화 방식</strong></summary>
+<br>
 
 GRU와 LSTM에 대해 Optuna 기반 하이퍼파라미터 튜닝을 수행했습니다. 튜닝 objective score는 under-provisioning rate를 중심으로 SMAPE와 over-provisioning rate를 보조 penalty로 반영합니다.
 
@@ -213,11 +232,12 @@ score = under_provisioning_rate + 0.1 * smape + 0.2 * over_provisioning_rate
 
 튜닝 실행 방법은 [`docs/run-guide.md`](docs/run-guide.md)를 참고합니다.
 
----
+</details>
 
 <a id="comparison-2"></a>
-
-## 📊 2차 모델 비교: 튜닝 전후 비교
+<details>
+<summary><strong>📊 5-3. 2차 모델 비교: 튜닝 전후 비교</strong></summary>
+<br>
 
 2차 비교에서는 기본 GRU/LSTM과 Optuna로 생성한 Tuned GRU/Tuned LSTM을 비교했습니다. 이 단계의 목적은 튜닝이 실제 holdout 성능을 개선했는지 확인하고, 최종 사용 모델을 결정하는 것입니다.
 
@@ -234,11 +254,33 @@ Tuned LSTM은 SMAPE, pod accuracy, over-provisioning rate를 개선했고, Tuned
 
 ![Sequence tuning metric comparison](docs/assets/sequence_tuning_metric_comparison.png)
 
+동일한 표는 [`docs/final-decision.md`](docs/final-decision.md)의 "2차 모델 비교" 절에도 있습니다.
+
+</details>
+
+---
+
+<a id="final-model"></a>
+
+## 🏆 6. 최종 사용 모델
+
+최종 사용 모델은 **기본 GRU**입니다.
+
+선정 이유:
+
+- 1차 비교에서 under-provisioning rate가 가장 낮았습니다.
+- 2차 비교에서도 tuned GRU/LSTM보다 pod 부족 위험이 낮았습니다.
+- Kubernetes autoscaling에서는 예측 오차보다 required pod를 적게 잡는 위험이 더 치명적입니다.
+
+LSTM과 Tuned LSTM은 SMAPE와 pod accuracy가 GRU보다 좋지만, primary metric인 under-provisioning rate는 GRU보다 높습니다. 이번 실험에서는 비용 최적화보다 서비스 안정성을 우선해 기본 GRU를 선택합니다.
+
+최종 판단 상세는 [`docs/final-decision.md`](docs/final-decision.md)를 참고합니다.
+
 ---
 
 <a id="troubleshooting"></a>
 
-## 🧯 Troubleshooting
+## 🧯 7. Troubleshooting
 
 <details>
 <summary><strong>시간 feature 전처리 문제</strong></summary>
@@ -247,6 +289,10 @@ Tuned LSTM은 SMAPE, pod accuracy, over-provisioning rate를 개선했고, Tuned
 초기에는 `hour`, `day_of_week`, `month`를 raw integer feature로 사용했습니다. 이 방식은 시간의 순환성을 반영하지 못해 `23시`와 `0시`, `12월`과 `1월`이 멀리 떨어진 값처럼 처리되는 문제가 있었습니다.
 
 이를 해결하기 위해 SARIMA와 GRU/LSTM 입력에서 시간 feature를 sin/cos 기반 cyclic encoding으로 변환했습니다. 적용 후 GRU/LSTM의 예측 진동이 줄고, under-provisioning rate가 크게 낮아졌습니다.
+
+![시간 feature 전처리 개선 전후 비교](docs/assets/preprocessing_before_after.png)
+
+Under-provisioning rate 기준으로 GRU는 `0.184 -> 0.043`, LSTM은 `0.208 -> 0.056`으로 크게 낮아졌고, SMAPE·Pod accuracy도 세 모델 모두 개선됐습니다. SARIMA는 개선 폭이 가장 작아 primary metric인 under-provisioning rate가 여전히 `0.376`으로 높았습니다(자세한 수치는 [`docs/experiment-notes.md`](docs/experiment-notes.md)의 "전처리 개선 전후 성능" 표 참고).
 
 </details>
 
@@ -276,27 +322,9 @@ Optuna 튜닝 모델은 validation objective 기준으로 더 좋은 조합을 �
 
 ---
 
-<a id="final-model"></a>
-
-## 🏆 최종 사용 모델
-
-최종 사용 모델은 **기본 GRU**입니다.
-
-선정 이유:
-
-- 1차 비교에서 under-provisioning rate가 가장 낮았습니다.
-- 2차 비교에서도 tuned GRU/LSTM보다 pod 부족 위험이 낮았습니다.
-- Kubernetes autoscaling에서는 예측 오차보다 required pod를 적게 잡는 위험이 더 치명적입니다.
-
-LSTM과 Tuned LSTM은 SMAPE와 pod accuracy가 GRU보다 좋지만, primary metric인 under-provisioning rate는 GRU보다 높습니다. 이번 실험에서는 비용 최적화보다 서비스 안정성을 우선해 기본 GRU를 선택합니다.
-
-최종 판단 상세는 [`docs/final-decision.md`](docs/final-decision.md)를 참고합니다.
-
----
-
 <a id="tech-stack"></a>
 
-## 🛠️ 기술 스택
+## 🛠️ 8. 기술 스택
 
 | 영역 | 스택 |
 | --- | --- |
@@ -313,7 +341,7 @@ LSTM과 Tuned LSTM은 SMAPE와 pod accuracy가 GRU보다 좋지만, primary metr
 
 <a id="directory"></a>
 
-## 📂 디렉터리 구조
+## 📂 9. 디렉터리 구조
 
 ```text
 ai-prediction-model/
@@ -337,24 +365,24 @@ ai-prediction-model/
 
 <a id="docs"></a>
 
-## 📄 참고 문서
+## 📄 10. 참고 문서
 
 | 문서 | 내용 |
 | --- | --- |
 | [`docs/run-guide.md`](docs/run-guide.md) | 데이터 생성, 모델 학습, 튜닝, 비교 실행 방법 |
 | [`docs/problem-definition.md`](docs/problem-definition.md) | 문제 정의 |
-| [`docs/experiment-design.md`](docs/experiment-design.md) | 데이터 생성과 실험 설계 |
-| [`docs/experiment-notes.md`](docs/experiment-notes.md) | README에 담기 어려운 실험 이력, 해석, 보류된 최적화 기록 |
+| [`docs/experiment-design.md`](docs/experiment-design.md) | 데이터 기간, 트래픽 생성 로직, train/holdout 분리, 모델별 입력 feature, 실행 순서 |
+| [`docs/experiment-notes.md`](docs/experiment-notes.md) | README에 담기 어려운 실험 이력, 전처리(cyclic encoding) 개선 배경, 보류된 최적화 기록 |
 | [`docs/model-selection-criteria.md`](docs/model-selection-criteria.md) | 모델 선정 기준 |
 | [`docs/sequence-tuning-parameters.md`](docs/sequence-tuning-parameters.md) | GRU/LSTM Optuna 튜닝 파라미터 |
 | [`docs/final-decision.md`](docs/final-decision.md) | 최종 모델 선정 결과 |
-| [`docs/onprem-bnpl-autoscaling-design.md`](docs/onprem-bnpl-autoscaling-design.md) | On-prem BNPL 서비스별 예측 오토스케일링 설계(후속 확장) |
+| [`docs/onprem-bnpl-autoscaling-design.md`](docs/onprem-bnpl-autoscaling-design.md) | On-prem BNPL 서비스별 예측 오토스케일링 설계(후속 확장, 본문에서는 인용하지 않음) |
 
 ---
 
 <a id="repositories"></a>
 
-## 🔗 관련 레포지토리
+## 🔗 11. 관련 레포지토리
 
 | 레포 | 설명 |
 | --- | --- |
