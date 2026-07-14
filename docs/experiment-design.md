@@ -1,8 +1,10 @@
 # 실험 설계
 
+이 문서는 데이터 기간, train/holdout 분리 기준, 동일 조건 비교 원칙, 모델별 입력 feature와 실험 실행 순서를 정리합니다.
+
 ## 데이터 기간
 
-기본 synthetic dataset은 5년 기간을 사용한다.
+기본 synthetic dataset은 5년 기간을 사용합니다.
 
 - 시작: `2020-01-01`
 - 종료: `2024-12-31 23:00`
@@ -16,16 +18,16 @@ python src/data/generate_dummy_data.py
 
 ## Train/Holdout 분리
 
-모든 모델은 동일한 chronological split을 사용한다.
+모든 모델은 동일한 chronological split을 사용합니다.
 
 - Train: 앞쪽 80%, 약 4년
 - Holdout: 뒤쪽 20%, 약 1년
 
-시계열 데이터이므로 random split을 사용하지 않는다. 과거 4년 데이터로 학습하고 마지막 1년 전체를 평가하는 형태가 실제 운영 상황에 더 가깝고, holdout 구간에 계절성을 한 번 포함할 수 있다.
+시계열 데이터이므로 random split을 사용하지 않습니다. 과거 4년 데이터로 학습하고 마지막 1년 전체를 평가하는 형태가 실제 운영 상황에 더 가깝고, holdout 구간에 계절성을 한 번 포함할 수 있습니다.
 
 ## 동일 조건 비교 원칙
 
-모델 비교는 다음 조건을 고정한다.
+모델 비교는 다음 조건을 고정합니다.
 
 - 동일한 입력 파일: `data/processed/traffic.csv`
 - 동일한 holdout ratio: 기본값 `0.2`
@@ -43,7 +45,7 @@ python src/data/generate_dummy_data.py
 | GRU | sequence window of `y` + features |
 | LSTM | sequence window of `y` + features |
 
-GRU와 LSTM은 holdout 예측 시 실제 holdout `y`를 다음 입력 window에 넣지 않도록 recursive forecast 방식을 사용한다.
+GRU와 LSTM은 holdout 예측 시 실제 holdout `y`를 다음 입력 window에 넣지 않도록 recursive forecast 방식을 사용합니다.
 
 ## 실험 실행 순서
 
