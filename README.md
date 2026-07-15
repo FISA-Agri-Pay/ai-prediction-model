@@ -138,7 +138,7 @@ Synthetic traffic data는 농자재 BNPL 서비스의 계절적 수요를 반영
 
 <a id="preprocessing"></a>
 <details>
-<summary><strong>⚙️ 4-3.전처리 방식</strong></summary>
+<summary><strong>⚙️ 4-3. 전처리 방식</strong></summary>
 <br>
 
 모든 모델은 `data/processed/traffic.csv`를 기준으로 학습합니다. 학습 전에는 모델 입력 형태에 맞춰 timestamp 정렬, target 컬럼 정리, weather/calendar feature 구성, sequence window 생성 등을 수행합니다.
@@ -151,7 +151,7 @@ cyclic encoding을 도입하게 된 배경과 전후 성능 비교는 [`docs/exp
 
 <a id="evaluation"></a>
 <details>
-<summary><strong>📏 4-4.평가 기준</strong></summary>
+<summary><strong>📏 4-4. 평가 기준</strong></summary>
 <br>
 
 모델 비교는 timestamp 기준 chronological split으로 진행합니다.
