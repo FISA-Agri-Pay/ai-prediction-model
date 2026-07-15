@@ -1,0 +1,71 @@
+# Python cache/build output
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+
+# Local environments
+.venv/
+venv/
+
+# Environment variables / secrets
+.env
+.env.*
+*.key
+secrets/
+
+# Generated data
+/data/raw/*
+/data/processed/*
+/data/predictions/*
+*.parquet
+*.json.gz
+
+# Experiment outputs
+/experiments/results/*
+/experiments/plots/*
+/experiments/service_autoscaling/**/results/*
+
+# Model artifacts
+/models/*
+*.pkl
+*.joblib
+*.h5
+*.pt
+*.pth
+
+# Keep generated-output directory structure
+!/data/**/.gitkeep
+!/experiments/**/.gitkeep
+!/models/.gitkeep
+
+# MLflow
+mlruns/
+mlartifacts/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Logs
+logs/
+*.log
+
+# OpenEvolve local run artifacts
+/experiments/openevolve/**/checkpoints/
+/experiments/openevolve/**/output/
+/experiments/openevolve/**/openevolve_output*/
+/experiments/openevolve/**/logs/
+/experiments/openevolve/**/database/
+/experiments/openevolve/**/artifacts/
+/experiments/openevolve/**/config.local.yaml
+/experiments/openevolve/**/evaluator_last_error.txt
+/experiments/openevolve/**/*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
